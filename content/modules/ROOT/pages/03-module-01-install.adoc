@@ -99,7 +99,6 @@ vault-0   1/1     Running   0          45s
 
 === Verify the Vault installation
 
-// TODO: verify the vault status output below against the Vault version in antora.yml
 . Check the status of the Vault server:
 +
 [source,bash,role=execute]
@@ -183,12 +182,10 @@ https://vault-vault.apps.<cluster-domain>
 
 . Open the URL in a new browser tab. Select *Token* as the sign-in method, enter `root` as the token, and click *Sign in*.
 +
-// TODO: Add screenshot of the Vault UI sign-in page with the Token method selected
 image::vault-ui-login.png[Vault UI sign-in page with the Token method selected,link=self,window=blank,width=700,title="Vault UI sign-in"]
 
 . After signing in, you see the *Secrets engines* page with the `secret/` engine listed.
 +
-// TODO: Add screenshot of the Vault UI Secrets engines page showing secret/ and cubbyhole/
 image::vault-ui-secrets-engines.png[Vault UI Secrets engines page listing the secret and cubbyhole engines,link=self,window=blank,width=700,title="Vault secrets engines"]
 
 [#exercise-2-install-the-operator]
@@ -250,7 +247,6 @@ operatorgroup.operators.coreos.com/openshift-external-secrets-operator created
 subscription.operators.coreos.com/openshift-external-secrets-operator created
 ----
 
-// TODO: verify the CSV name and REPLACES column below on the target cluster
 . Watch the installation progress. OLM tracks each installed operator version as a cluster service version (CSV):
 +
 [source,bash,role=execute]
@@ -263,7 +259,7 @@ The CSV can take up to a minute to appear. If nothing shows yet, keep waiting. W
 [subs="attributes+"]
 ----
 NAME                                DISPLAY                                           VERSION   REPLACES   PHASE
-external-secrets-operator.v{eso_version}   External Secrets Operator for Red Hat OpenShift   {eso_version}     ...        Succeeded
+openshift-external-secrets-operator.v{eso_version}   External Secrets Operator for Red Hat OpenShift   {eso_version}     ...        Succeeded
 ----
 
 === Verify the operator installation

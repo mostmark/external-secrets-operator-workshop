@@ -420,24 +420,6 @@ The rotation worked when:
 * The environment variable showed the new password only after the rollout restart
 * The `force-sync` annotation updated the Secret immediately
 
-== Cleanup (optional)
-
-To remove the workloads and operators you installed in this workshop, run the following commands. Uninstalling the operator does not remove the resources it created, so delete them first. The commands wait for the `secrets-demo` namespace to be deleted before they remove the operator.
-
-[source,bash,role=execute]
-----
-oc delete project secrets-demo
-oc wait --for=delete namespace/secrets-demo --timeout=120s
-oc delete externalsecretsconfig cluster
-oc delete subscription openshift-external-secrets-operator -n external-secrets-operator
-oc delete csv -n external-secrets-operator -l operators.coreos.com/openshift-external-secrets-operator.external-secrets-operator
-oc delete project external-secrets-operator external-secrets
-helm uninstall vault -n vault
-oc delete project vault
-----
-
-The custom resource definitions (CRDs) of the External Secrets Operator stay on the cluster. Remove them only if no other workload uses them.
-
 == Learning outcomes
 
 By completing this module, you now understand:
