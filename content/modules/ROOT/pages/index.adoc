@@ -1,0 +1,51 @@
+= Managing Secrets with the External Secrets Operator on OpenShift
+
+Welcome to the Managing Secrets with the External Secrets Operator on OpenShift workshop!
+
+== What you'll learn
+
+In this workshop, you will:
+
+* Explain why Kubernetes Secrets stored in Git are a risk and how the External Secrets Operator (ESO) addresses it
+* Install the External Secrets Operator for Red Hat OpenShift
+* Store secrets in the key/value (KV) engine of HashiCorp Vault
+* Configure the Vault Kubernetes auth method so ESO authenticates with a service account instead of a static token
+* Create a `SecretStore` that points at Vault
+* Define an `ExternalSecret` that syncs Vault data into a native Kubernetes Secret
+* Deploy a sample application that reads the synced Secret as environment variables and as a mounted volume
+* Rotate a secret in Vault and observe how ESO refreshes it in the running application
+
+== Who this is for
+
+This workshop is designed for platform engineers, developers, and architects who want to sync secrets from HashiCorp Vault into Red Hat OpenShift Container Platform by using the External Secrets Operator.
+
+**Experience level**: Beginner
+
+== Prerequisites
+
+Before starting this workshop, you should have:
+
+* Basic familiarity with OpenShift and Kubernetes concepts (pods, namespaces, deployments, and Secrets)
+* Command-line experience (Linux/Unix)
+* Access to a web browser
+
+No prior experience with HashiCorp Vault or the External Secrets Operator is required.
+
+== Workshop environment
+
+You will work in an OpenShift {ocp_version} cluster with cluster administrator access. All command-line work happens in the OpenShift Web Terminal, which already includes the `oc` and `helm` tools.
+
+During the workshop, you will install HashiCorp Vault and the External Secrets Operator for Red Hat OpenShift yourself.
+
+== Estimated time
+
+This workshop will take approximately **1 to 1.5 hours** to complete.
+
+* **Overview and environment setup**: Concepts and access to your cluster (10 minutes)
+* **Module 1**: Install HashiCorp Vault and the External Secrets Operator (20 minutes)
+* **Module 2**: Connect the External Secrets Operator to Vault (25 minutes)
+* **Module 3**: Use synced secrets in a sample application (25 minutes)
+
+== Let's get started!
+
+Select **Workshop Overview** in the navigation to begin.

@@ -1,0 +1,99 @@
+= Workshop overview
+:toc:
+:toc-placement: preamble
+:icons: font
+
+This workshop shows you how to keep credentials out of Git and out of hand-written manifests by storing them in HashiCorp Vault and syncing them into Red Hat OpenShift Container Platform with the External Secrets Operator (ESO).
+
+== Why Kubernetes Secrets alone are not enough
+
+A Kubernetes Secret is an object that separates confidential data, such as passwords, API keys, and TLS certificates, from application code and container images. Secrets are a good start, but on their own they leave several gaps:
+
+* **Base64 is not encryption**: Secret values are base64-encoded. Anyone who can read the Secret object can decode the value with a single command.
+* **Secrets end up in Git**: When teams manage configuration with Git, Secret manifests tend to be committed together with everything else. After a credential is in the Git history, it is hard to remove.
+* **No central control**: Each cluster and namespace holds its own copy of a credential. Auditing who accessed a credential, and when, is difficult.
+* **Manual rotation**: Changing a password means finding and updating every Secret that contains it. Credentials that are never rotated become stale and risky.
+
+The link:https://docs.redhat.com/en/learn/learning-paths/how-manage-kubernetes-secrets-red-hat-openshift[How to manage Kubernetes Secrets with Red Hat OpenShift^] learning path describes this as two separate problems: protecting credentials before they reach the cluster, and protecting them while applications run inside the cluster.
+
+== Repositories, distributors, and consumers
+
+Red Hat describes secrets management in OpenShift with three roles:
+
+Secrets repository::
+A central system that stores credentials, controls who can read them, and audits their use. In this workshop, the repository is **HashiCorp Vault**.
+
+Secrets distributor::
+A component that authenticates to the repository, retrieves credentials, and delivers them in the format a workload expects. In this workshop, the distributor is the **External Secrets Operator for Red Hat OpenShift**.
+
+Secrets consumer::
+Any workload that needs a credential to run. In this workshop, the consumer is a **sample application** that reads a database username and password.
+
+Separating these roles means the application never needs to know where a credential is stored or how to authenticate to Vault. It reads an ordinary Kubernetes Secret.
+
+== How the External Secrets Operator works
+
+The External Secrets Operator watches custom resources in your namespaces and keeps native Kubernetes Secrets in sync with an external secrets repository.
+
+image::eso-vault-architecture.svg[Diagram showing the External Secrets Operator reading an ExternalSecret and SecretStore, authenticating to HashiCorp Vault, and writing a Secret that an application pod consumes,link=self,window=blank,width=900,title="External Secrets Operator and HashiCorp Vault"]
+
+You work with three resources:
+
+`SecretStore`::
+Describes how to reach the external repository: the Vault address, the secrets engine path, and the authentication method. A `SecretStore` is namespaced. A `ClusterSecretStore` provides the same configuration for the whole cluster.
+
+`ExternalSecret`::
+Describes which keys to fetch, which Secret to create, and how often to refresh it.
+
+`Secret`::
+The native Kubernetes Secret that ESO creates and owns. Applications consume it as environment variables or as files in a mounted volume, exactly as they would any other Secret.
+
+Because ESO writes a native Secret, existing applications do not need code changes. The Secret also stays in place if the connection to Vault is temporarily lost.
+
+=== ESO compared to the Secrets Store CSI Driver
+
+OpenShift also supports the Secrets Store CSI Driver, which mounts credentials directly into pods as a temporary volume, without creating a Secret object. The Red Hat learning path recommends choosing between them as follows:
+
+* **Choose ESO** when storing credentials as Kubernetes Secrets in etcd is acceptable, when applications expect environment variables or standard Secrets, or when you need templating and cross-cluster distribution.
+* **Choose the Secrets Store CSI Driver** when compliance rules forbid storing credentials in etcd, or when you do not control the cluster control plane.
+
+This workshop focuses on ESO.
+
+== What you will build
+
+Over three modules, you will build a complete secrets pipeline:
+
+* **Module 1**: Install HashiCorp Vault with Helm and install the External Secrets Operator for Red Hat OpenShift. Allow the operator to reach Vault through its network policy.
+* **Module 2**: Store database credentials in Vault, configure Vault to trust OpenShift service accounts, create a `SecretStore`, and sync the credentials into a Secret with an `ExternalSecret`.
+* **Module 3**: Deploy a sample application that reads the synced Secret, rotate the password in Vault, and observe how the change reaches the running application.
+
+== Learning objectives
+
+By the end of this workshop, you will be able to:
+
+* Explain why Kubernetes Secrets stored in Git are a risk and how ESO addresses it
+* Install the External Secrets Operator for Red Hat OpenShift
+* Store secrets in the key/value (KV) version 2 secrets engine of HashiCorp Vault
+* Configure the Vault Kubernetes auth method so ESO authenticates with a service account instead of a static token
+* Create a `SecretStore` that points at Vault
+* Define an `ExternalSecret` that syncs Vault data into a native Kubernetes Secret
+* Deploy a sample application that reads the synced Secret as environment variables and as a mounted volume
+* Rotate a secret in Vault and observe how ESO refreshes it in the running application
+
+== Common questions
+
+**"Does my application need to change to use ESO?"**
+
+No. ESO creates a standard Kubernetes Secret. Your application consumes it in the same way it consumes any other Secret.
+
+**"Is the synced Secret more secure than a hand-written one?"**
+
+The Secret on the cluster is still base64-encoded, so you still protect it with role-based access control (RBAC) and, where required, etcd encryption. The gain is that the source of truth lives in Vault, nothing sensitive is committed to Git, and rotation happens in one place.
+
+**"Why does ESO not use a Vault token stored in a Secret?"**
+
+A long-lived token stored in the cluster is exactly the kind of credential you are trying to eliminate. With the Vault Kubernetes auth method, ESO presents a short-lived service account token that Vault verifies with the OpenShift API.
+
+**"Is the Vault installation in this workshop production-ready?"**
+
+No. You run Vault in development mode, which keeps all data in memory and starts unsealed with a known root token. This keeps the workshop focused on ESO. Production Vault deployments use persistent storage, TLS, high availability, and an unseal process.

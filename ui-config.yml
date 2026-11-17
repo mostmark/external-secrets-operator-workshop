@@ -1,0 +1,20 @@
+---
+type: showroom
+
+# Set the left column width to 30%
+default_width: 30
+# Persist the URL state so browser refresh doesn't reset the UI
+persist_url_state: true
+
+view_switcher:
+  enabled: true
+  default_mode: split
+
+tabs:
+  # CLI commands run in the OpenShift Web Terminal inside the console
+  - name: OCP Console
+    url: 'https://console-openshift-console.${DOMAIN}'
+
+  # Vault UI, exposed by the Route created in Module 1 (namespace "vault", route "vault")
+  - name: Vault UI
+    url: 'https://vault-vault.${DOMAIN}'

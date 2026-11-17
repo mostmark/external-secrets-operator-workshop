@@ -1,0 +1,463 @@
+= Module 3: Use synced secrets in a sample application
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+*Estimated time*: 25 minutes
+
+The `database-credentials` Secret is in place, and the External Secrets Operator keeps it in sync with Vault. In this module, you see what that means for an application. You deploy a small web application that reads the credentials in the two most common ways: as environment variables and as files in a mounted volume. Then you rotate the password in Vault and follow the new value from Vault to the Secret to the running application.
+
+== Learning objectives
+
+By the end of this module, you'll be able to:
+
+* Consume a Secret that the External Secrets Operator manages in a deployment as environment variables and as a mounted volume
+* Rotate a secret in Vault and confirm that the External Secrets Operator updates the Secret on the next refresh
+* Explain why mounted Secret files pick up a rotated value while environment variables need a pod restart
+* Trigger an immediate sync of an `ExternalSecret`
+
+[#exercise-1-deploy-the-sample-application]
+== Exercise 1: Deploy the sample application
+
+The sample application is a short Python script that runs in the Red Hat Universal Base Image Python image. On every request, it returns the database credentials it can see:
+
+* `DB_USERNAME` and `DB_PASSWORD` environment variables, which come from the Secret through `secretKeyRef`
+* The `username` and `password` files in `/etc/secrets/database`, which come from the Secret through a volume
+
+[WARNING]
+====
+The sample application displays credentials so that you can watch them change. A real application must never expose its credentials.
+====
+
+=== Create the application
+
+. Make sure you are in the `secrets-demo` project:
++
+[source,bash,role=execute]
+----
+oc project secrets-demo
+----
+
+. Store the application code in a config map:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: secrets-demo-app
+  namespace: secrets-demo
+data:
+  app.py: |
+    import os
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    SECRET_DIR = "/etc/secrets/database"
+
+    def read_file(name):
+        try:
+            with open(os.path.join(SECRET_DIR, name)) as f:
+                return f.read().strip()
+        except OSError:
+            return "(not mounted)"
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = (
+                "Database credentials seen by this pod\n"
+                "=====================================\n"
+                f"Environment variable DB_USERNAME : {os.environ.get('DB_USERNAME', '(not set)')}\n"
+                f"Environment variable DB_PASSWORD : {os.environ.get('DB_PASSWORD', '(not set)')}\n"
+                f"Mounted file username            : {read_file('username')}\n"
+                f"Mounted file password            : {read_file('password')}\n"
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(body.encode())
+
+        def log_message(self, *args):
+            pass
+
+    HTTPServer(("", 8080), Handler).serve_forever()
+EOF
+----
++
+Expected output:
++
+----
+configmap/secrets-demo-app created
+----
+
+. Create the deployment and the service:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secrets-demo-app
+  namespace: secrets-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secrets-demo-app
+  template:
+    metadata:
+      labels:
+        app: secrets-demo-app
+    spec:
+      containers:
+      - name: app
+        image: registry.access.redhat.com/ubi9/python-312:latest
+        command: ["python3", "/opt/app/app.py"]
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: password
+        volumeMounts:
+        - name: app-code
+          mountPath: /opt/app
+        - name: database-credentials
+          mountPath: /etc/secrets/database
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+      volumes:
+      - name: app-code
+        configMap:
+          name: secrets-demo-app
+      - name: database-credentials
+        secret:
+          secretName: database-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: secrets-demo-app
+  namespace: secrets-demo
+spec:
+  selector:
+    app: secrets-demo-app
+  ports:
+  - port: 8080
+    targetPort: 8080
+EOF
+----
++
+The deployment references the `database-credentials` Secret twice:
++
+* Under `env`, `secretKeyRef` copies the `username` and `password` keys into environment variables when the container starts.
+* Under `volumes`, the `secret` volume makes each key of the Secret available as a file in `/etc/secrets/database`.
++
+The application doesn't know that the values come from Vault. It reads a normal Kubernetes Secret.
++
+Expected output:
++
+----
+deployment.apps/secrets-demo-app created
+service/secrets-demo-app created
+----
+
+. Wait for the deployment to finish:
++
+[source,bash,role=execute]
+----
+oc rollout status deployment/secrets-demo-app -n secrets-demo
+----
++
+The first rollout pulls the UBI Python image, which can take 1 to 2 minutes.
++
+Expected output:
++
+----
+deployment "secrets-demo-app" successfully rolled out
+----
+
+. Expose the application with an edge-terminated route and save its URL in a variable:
++
+[source,bash,role=execute]
+----
+oc create route edge secrets-demo-app --service=secrets-demo-app -n secrets-demo
+APP_URL="https://$(oc get route secrets-demo-app -n secrets-demo -o jsonpath='{.spec.host}')"
+echo $APP_URL
+----
++
+Expected output:
++
+----
+route.route.openshift.io/secrets-demo-app created
+https://secrets-demo-app-secrets-demo.apps.<cluster-domain>
+----
+
+=== Verify the application
+
+. Call the application:
++
+[source,bash,role=execute]
+----
+curl -sS $APP_URL
+----
++
+If you get an *Application is not available* page, the route is not ready yet. Wait a few seconds and run the command again.
++
+Expected output:
++
+----
+Database credentials seen by this pod
+=====================================
+Environment variable DB_USERNAME : app_user
+Environment variable DB_PASSWORD : S3cr3t-v1
+Mounted file username            : app_user
+Mounted file password            : S3cr3t-v1
+----
+
+. Open the URL from `echo $APP_URL` in a new browser tab to see the same output.
++
+// TODO: Add screenshot of the sample application in the browser showing S3cr3t-v1 in all four lines
+image::sample-app-v1.png[Sample application in a browser showing the username and password from environment variables and mounted files,link=self,window=blank,width=700,title="Sample application with the original password"]
+
+The application works when:
+
+* The deployment rolled out successfully
+* Both environment variables and both mounted files show `app_user` and `S3cr3t-v1`
+
+[#exercise-2-rotate-the-secret]
+== Exercise 2: Rotate the secret in Vault
+
+Rotating a credential shows the main benefit of a central secrets repository. You change the password once, in Vault, and the External Secrets Operator distributes the new value. You don't edit any Kubernetes resource.
+
+=== Change the password in Vault
+
+[NOTE]
+====
+The `APP_URL` variable exists only in your current terminal session. If you opened a new terminal or reconnected, set it again:
+
+[source,bash,role=execute]
+----
+APP_URL="https://$(oc get route secrets-demo-app -n secrets-demo -o jsonpath='{.spec.host}')"
+----
+====
+
+. Write a new version of the secret:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault kv put secret/secrets-demo/database username=app_user password=S3cr3t-v2
+----
++
+Expected output (note that `version` is now `2`):
++
+----
+========== Secret Path ==========
+secret/data/secrets-demo/database
+...
+version            2
+----
+
+. Within the 15-second refresh interval, the operator reads the new version and updates the Secret. Check the Secret:
++
+[source,bash,role=execute]
+----
+oc get secret database-credentials -n secrets-demo -o jsonpath='{.data.password}' | base64 -d; echo
+----
++
+Expected output (if you still see `S3cr3t-v1`, wait a few seconds and run the command again):
++
+----
+S3cr3t-v2
+----
+
+=== Observe the application
+
+. Call the application every 10 seconds until the mounted file shows the new password:
++
+[source,bash,role=execute]
+----
+while true; do date +%T; curl -sS $APP_URL | grep -i password; echo; sleep 10; done
+----
++
+After a delay of about 1 to 2 minutes, the output looks like this. Press `Ctrl+C` to stop the loop.
++
+----
+14:02:31
+Environment variable DB_PASSWORD : S3cr3t-v1
+Mounted file password            : S3cr3t-v2
+----
++
+The two values differ:
++
+* **Mounted file**: The kubelet periodically updates the files of a mounted Secret volume. The application reads the file on every request, so it sees the new password without a restart.
+* **Environment variable**: The container receives environment variables once, when it starts. They never change while the container runs.
+
+. Restart the deployment so that a new pod starts with the new environment variables:
++
+[source,bash,role=execute]
+----
+oc rollout restart deployment/secrets-demo-app -n secrets-demo
+oc rollout status deployment/secrets-demo-app -n secrets-demo
+----
++
+Expected output:
++
+----
+deployment.apps/secrets-demo-app restarted
+...
+deployment "secrets-demo-app" successfully rolled out
+----
+
+. Call the application again:
++
+[source,bash,role=execute]
+----
+curl -sS $APP_URL
+----
++
+Expected output:
++
+----
+Database credentials seen by this pod
+=====================================
+Environment variable DB_USERNAME : app_user
+Environment variable DB_PASSWORD : S3cr3t-v2
+Mounted file username            : app_user
+Mounted file password            : S3cr3t-v2
+----
+
+[TIP]
+====
+For applications that read credentials only at startup, you can automate the restart. Common approaches are a controller that watches Secrets and restarts the deployments that use them, or a checksum of the Secret in a pod template annotation that your deployment tooling updates.
+====
+
+=== Force an immediate sync
+
+You don't always want to wait for the refresh interval. For example, after an emergency rotation, you want the new value on the cluster immediately. Annotating the `ExternalSecret` with `force-sync` triggers a sync right away.
+
+With a 15-second interval, the next scheduled refresh would arrive before you could tell the difference. To see the effect of `force-sync`, first set a long interval, as a production workload would use.
+
+. Change the refresh interval of the `ExternalSecret` to 1 hour:
++
+[source,bash,role=execute]
+----
+oc patch externalsecret database-credentials -n secrets-demo --type merge -p '{"spec":{"refreshInterval":"1h"}}'
+----
++
+Expected output:
++
+----
+externalsecret.external-secrets.io/database-credentials patched
+----
+
+. Rotate the password again:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault kv put secret/secrets-demo/database username=app_user password=S3cr3t-v3
+----
+
+. Wait a moment, then check the Secret:
++
+[source,bash,role=execute]
+----
+sleep 20
+oc get secret database-credentials -n secrets-demo -o jsonpath='{.data.password}' | base64 -d; echo
+----
++
+Expected output:
++
+----
+S3cr3t-v2
+----
++
+The Secret still holds the old password, because the next scheduled refresh is up to 1 hour away.
+
+. Trigger an immediate sync and check the Secret again:
++
+[source,bash,role=execute]
+----
+oc annotate externalsecret database-credentials -n secrets-demo force-sync=$(date +%s) --overwrite
+sleep 2
+oc get secret database-credentials -n secrets-demo -o jsonpath='{.data.password}' | base64 -d; echo
+----
++
+Expected output:
++
+----
+externalsecret.external-secrets.io/database-credentials annotated
+S3cr3t-v3
+----
++
+The new password is on the cluster immediately, without waiting for the refresh interval.
+
+. If you opened the Vault UI in Module 1, navigate to *secret* → *secrets-demo* → *database* and click the *Version History* tab. Vault keeps all 3 versions of the secret, which gives you an audit trail and the option to roll back.
++
+// TODO: Add screenshot of the Vault UI version history for secret/secrets-demo/database showing versions 1, 2, and 3
+image::vault-ui-version-history.png[Vault UI version history for the secrets-demo/database secret showing 3 versions,link=self,window=blank,width=700,title="Secret version history in Vault"]
+
+=== Verify the rotation
+
+The rotation worked when:
+
+* The `database-credentials` Secret contains the latest password from Vault
+* The mounted file in the running pod picked up the new password without a restart
+* The environment variable showed the new password only after the rollout restart
+* The `force-sync` annotation updated the Secret immediately
+
+== Cleanup (optional)
+
+To remove the workloads and operators you installed in this workshop, run the following commands. Uninstalling the operator does not remove the resources it created, so delete them first. The commands wait for the `secrets-demo` namespace to be deleted before they remove the operator.
+
+[source,bash,role=execute]
+----
+oc delete project secrets-demo
+oc wait --for=delete namespace/secrets-demo --timeout=120s
+oc delete externalsecretsconfig cluster
+oc delete subscription openshift-external-secrets-operator -n external-secrets-operator
+oc delete csv -n external-secrets-operator -l operators.coreos.com/openshift-external-secrets-operator.external-secrets-operator
+oc delete project external-secrets-operator external-secrets
+helm uninstall vault -n vault
+oc delete project vault
+----
+
+The custom resource definitions (CRDs) of the External Secrets Operator stay on the cluster. Remove them only if no other workload uses them.
+
+== Learning outcomes
+
+By completing this module, you now understand:
+
+* How an application consumes a Secret that the External Secrets Operator manages exactly like any other Secret, through `secretKeyRef` environment variables and `secret` volumes
+* How the External Secrets Operator propagates a rotation in Vault to the Secret on the next refresh, without any change to Kubernetes manifests
+* Why mounted Secret files update in a running pod, while environment variables require a new pod
+* How the `force-sync` annotation triggers an immediate sync when you can't wait for the refresh interval
+
+== Module summary
+
+You completed the secrets pipeline from Vault to a running application, and rotated a credential without touching a single Kubernetes manifest.
+
+**What you accomplished:**
+
+* Deployed a sample application that reads the `database-credentials` Secret as environment variables and as a mounted volume
+* Rotated the password in Vault and followed the new value to the Secret and to the application
+* Restarted the deployment to refresh environment variables
+* Triggered an immediate sync with the `force-sync` annotation
+
+**Next steps:**
+
+Continue to the xref:06-conclusion.adoc[Conclusion] for a summary of the workshop and resources for further learning.

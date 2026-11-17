@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" width="960" height="440" font-family="Red Hat Text, Overpass, Helvetica, Arial, sans-serif">
+  <title>External Secrets Operator syncing secrets from HashiCorp Vault into an OpenShift namespace</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#151515"/>
+    </marker>
+    <style>
+      .ns { fill: #f2f2f2; stroke: #707070; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .nslabel { font-size: 13px; fill: #4d4d4d; font-family: Red Hat Mono, monospace; }
+      .box { fill: #ffffff; stroke: #151515; stroke-width: 1.5; }
+      .vault { fill: #ffffff; stroke: #ee0000; stroke-width: 2; }
+      .eso { fill: #ffffff; stroke: #0066cc; stroke-width: 2; }
+      .title { font-size: 16px; font-weight: 700; fill: #151515; }
+      .sub { font-size: 13px; fill: #4d4d4d; }
+      .code { font-size: 13px; fill: #151515; font-family: Red Hat Mono, monospace; }
+      .flow { font-size: 13px; fill: #151515; }
+      .step { fill: #151515; }
+      .stepnum { font-size: 12px; font-weight: 700; fill: #ffffff; }
+      .line { stroke: #151515; stroke-width: 1.5; fill: none; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="440" fill="#ffffff"/>
+
+  <!-- Namespace: vault -->
+  <rect class="ns" x="20" y="40" width="250" height="270" rx="10"/>
+  <text class="nslabel" x="34" y="62">namespace: vault</text>
+  <rect class="vault" x="40" y="80" width="210" height="210" rx="8"/>
+  <text class="title" x="145" y="110" text-anchor="middle">HashiCorp Vault</text>
+  <text class="sub" x="145" y="130" text-anchor="middle">(pod vault-0)</text>
+  <rect class="box" x="58" y="148" width="174" height="56" rx="6"/>
+  <text class="sub" x="145" y="170" text-anchor="middle">KV v2 secrets engine</text>
+  <text class="code" x="145" y="190" text-anchor="middle">secret/</text>
+  <rect class="box" x="58" y="216" width="174" height="56" rx="6"/>
+  <text class="sub" x="145" y="238" text-anchor="middle">Kubernetes auth</text>
+  <text class="code" x="145" y="258" text-anchor="middle">auth/kubernetes</text>
+
+  <!-- Namespace: external-secrets -->
+  <rect class="ns" x="355" y="40" width="250" height="270" rx="10"/>
+  <text class="nslabel" x="369" y="62">namespace: external-secrets</text>
+  <rect class="eso" x="375" y="80" width="210" height="210" rx="8"/>
+  <text class="title" x="480" y="110" text-anchor="middle">External Secrets</text>
+  <text class="title" x="480" y="130" text-anchor="middle">Operator</text>
+  <text class="sub" x="480" y="150" text-anchor="middle">(core controller)</text>
+  <text class="sub" x="480" y="200" text-anchor="middle">Watches ExternalSecrets,</text>
+  <text class="sub" x="480" y="218" text-anchor="middle">fetches values from Vault,</text>
+  <text class="sub" x="480" y="236" text-anchor="middle">writes native Secrets</text>
+
+  <!-- Namespace: secrets-demo -->
+  <rect class="ns" x="690" y="40" width="250" height="380" rx="10"/>
+  <text class="nslabel" x="704" y="62">namespace: secrets-demo</text>
+  <rect class="box" x="710" y="78" width="210" height="52" rx="6"/>
+  <text class="code" x="815" y="100" text-anchor="middle">SecretStore</text>
+  <text class="sub" x="815" y="119" text-anchor="middle">where and how to reach Vault</text>
+  <rect class="box" x="710" y="158" width="210" height="52" rx="6"/>
+  <text class="code" x="815" y="180" text-anchor="middle">ExternalSecret</text>
+  <text class="sub" x="815" y="199" text-anchor="middle">which keys to sync</text>
+  <rect class="box" x="710" y="258" width="210" height="52" rx="6"/>
+  <text class="code" x="815" y="280" text-anchor="middle">Secret</text>
+  <text class="sub" x="815" y="299" text-anchor="middle">native, managed by ESO</text>
+  <rect class="box" x="710" y="350" width="210" height="52" rx="6"/>
+  <text class="title" x="815" y="372" text-anchor="middle">Application pod</text>
+  <text class="sub" x="815" y="391" text-anchor="middle">env vars + mounted volume</text>
+
+  <!-- ExternalSecret references SecretStore -->
+  <path class="line" d="M815,158 L815,132" marker-end="url(#arrow)"/>
+
+  <!-- 1: controller reads ExternalSecret + SecretStore -->
+  <path class="line" d="M710,150 L590,150" marker-end="url(#arrow)"/>
+  <circle class="step" cx="650" cy="136" r="10"/><text class="stepnum" x="650" y="140" text-anchor="middle">1</text>
+  <text class="flow" x="650" y="170" text-anchor="middle">watch</text>
+
+  <!-- 2: controller authenticates to Vault -->
+  <path class="line" d="M375,244 L253,244" marker-end="url(#arrow)"/>
+  <circle class="step" cx="314" cy="228" r="10"/><text class="stepnum" x="314" y="232" text-anchor="middle">2</text>
+  <text class="flow" x="314" y="264" text-anchor="middle">login with</text>
+  <text class="flow" x="314" y="280" text-anchor="middle">SA token</text>
+
+  <!-- 3: controller reads KV -->
+  <path class="line" d="M375,176 L253,176" marker-end="url(#arrow)"/>
+  <circle class="step" cx="314" cy="160" r="10"/><text class="stepnum" x="314" y="164" text-anchor="middle">3</text>
+  <text class="flow" x="314" y="196" text-anchor="middle">read secret</text>
+
+  <!-- 4: controller writes Secret -->
+  <path class="line" d="M585,270 L660,270 L660,284 L707,284" marker-end="url(#arrow)"/>
+  <circle class="step" cx="622" cy="254" r="10"/><text class="stepnum" x="622" y="258" text-anchor="middle">4</text>
+  <text class="flow" x="645" y="306" text-anchor="middle">create /</text>
+  <text class="flow" x="645" y="322" text-anchor="middle">refresh</text>
+
+  <!-- 5: pod consumes Secret -->
+  <path class="line" d="M815,310 L815,347" marker-end="url(#arrow)"/>
+  <circle class="step" cx="840" cy="329" r="10"/><text class="stepnum" x="840" y="333" text-anchor="middle">5</text>
+
+  <!-- Legend -->
+  <text class="sub" x="20" y="350">1  ESO watches ExternalSecret and SecretStore resources</text>
+  <text class="sub" x="20" y="370">2  ESO logs in to Vault with a short-lived service account token</text>
+  <text class="sub" x="20" y="390">3  Vault returns the requested key/value data</text>
+  <text class="sub" x="20" y="410">4  ESO creates the Secret and refreshes it on every refresh interval</text>
+  <text class="sub" x="20" y="430">5  The application consumes the Secret like any other Kubernetes Secret</text>
+</svg>

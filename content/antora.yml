@@ -1,0 +1,28 @@
+name: modules
+title: Managing Secrets with the External Secrets Operator on OpenShift
+version: master
+nav:
+  - modules/ROOT/nav.adoc
+
+asciidoc:
+  attributes:
+    lab_name: "managing-secrets-external-secrets-operator-openshift"
+    release-version: master
+    page-pagination: true
+    # Product versions (sources: OCP 4.22 Security and compliance, ch. 13; vault-helm releases)
+    ocp_version: "4.22"
+    eso_version: "1.2.1"
+    eso_upstream_version: "v2.5.0"
+    eso_channel: "stable-v1"
+    vault_chart_version: "0.34.1"
+    vault_version: "2.0.4"
+    # OpenShift Cluster Access (substituted at runtime from URL parameters)
+    OPENSHIFT_CONSOLE_URL: "%OPENSHIFT_CONSOLE_URL%"
+    OPENSHIFT_API_URL: "%OPENSHIFT_API_URL%"
+    OPENSHIFT_USERNAME: "%OPENSHIFT_USERNAME%"
+    OPENSHIFT_PASSWORD: "%OPENSHIFT_PASSWORD%"
+    # Environment
+    guid: "%guid%"
+    page-links:
+    - url: https://redhat.com
+      text: Red Hat

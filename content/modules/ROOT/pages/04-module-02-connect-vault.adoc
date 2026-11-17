@@ -1,0 +1,465 @@
+= Module 2: Connect the External Secrets Operator to Vault
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+*Estimated time*: 25 minutes
+
+Vault and the External Secrets Operator are both running, but they don't know about each other yet. In this module, you connect them. You store database credentials in Vault, configure Vault to accept OpenShift service account tokens, and then sync the credentials into a native Kubernetes Secret.
+
+At no point do you write a password into a Kubernetes manifest. The only place the password exists is Vault, and the only manifests you create describe *where* to find it.
+
+== Learning objectives
+
+By the end of this module, you'll be able to:
+
+* Store credentials in the Vault KV version 2 secrets engine
+* Configure the Vault Kubernetes auth method with a policy and a role bound to a specific service account
+* Create a `SecretStore` that authenticates to Vault with a short-lived service account token
+* Define an `ExternalSecret` that syncs Vault data into a native Kubernetes Secret
+
+[#exercise-1-prepare-vault]
+== Exercise 1: Prepare Vault
+
+Vault needs three things before the External Secrets Operator can read from it: the secret itself, an auth method that trusts OpenShift, and a policy plus a role that decide what the operator may read.
+
+=== Store the database credentials
+
+. Write a username and password to the `secret/` KV engine:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault kv put secret/secrets-demo/database username=app_user password=S3cr3t-v1
+----
++
+Expected output:
++
+----
+========== Secret Path ==========
+secret/data/secrets-demo/database
+
+======= Metadata =======
+Key                Value
+---                -----
+created_time       ...
+custom_metadata    <nil>
+deletion_time      n/a
+destroyed          false
+version            1
+----
++
+The secret path in the output contains `data/`. The KV version 2 engine stores the secret values under `secret/data/` and the version history under `secret/metadata/`. The `vault kv` commands add `data/` for you. You need the `data/` prefix when you write the Vault policy in a later step.
+
+. Read the secret back:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault kv get secret/secrets-demo/database
+----
++
+Expected output:
++
+----
+========== Secret Path ==========
+secret/data/secrets-demo/database
+...
+====== Data ======
+Key         Value
+---         -----
+password    S3cr3t-v1
+username    app_user
+----
+
+. If you opened the Vault UI in Module 1, navigate to *secret* → *secrets-demo* → *database* to see the same secret.
++
+// TODO: Add screenshot of the Vault UI showing secret/secrets-demo/database with keys username and password
+image::vault-ui-database-secret.png[Vault UI showing the secrets-demo/database secret with the username and password keys,link=self,window=blank,width=700,title="Database credentials in Vault"]
+
+=== Enable the Kubernetes auth method
+
+The Kubernetes auth method lets a workload log in to Vault with its OpenShift service account token. Vault sends the token to the OpenShift API with a `TokenReview` request to confirm that the token is valid and to learn which service account it belongs to.
+
+. Enable the Kubernetes auth method:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault auth enable kubernetes
+----
++
+Expected output:
++
+----
+Success! Enabled kubernetes auth method at: kubernetes/
+----
+
+. Configure the auth method with the address of the OpenShift API server:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- sh -c 'vault write auth/kubernetes/config kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT"'
+----
++
+The command runs inside the Vault pod, so the `KUBERNETES_SERVICE_HOST` and `KUBERNETES_SERVICE_PORT` variables point at the in-cluster API server. Because Vault runs in a pod, it uses its own service account token and certificate authority to call the API, so you don't need to provide them.
++
+Expected output:
++
+----
+Success! Data written to: auth/kubernetes/config
+----
+
+. Confirm that the Vault service account is allowed to review tokens. The Helm chart created this cluster role binding for you:
++
+[source,bash,role=execute]
+----
+oc get clusterrolebinding vault-server-binding -o wide
+----
++
+Expected output:
++
+// TODO: verify the binding name created by the Vault Helm chart
+----
+NAME                   ROLE                                AGE   USERS   GROUPS   SERVICEACCOUNTS
+vault-server-binding   ClusterRole/system:auth-delegator   10m                    vault/vault
+----
++
+The `system:auth-delegator` cluster role grants permission to create `TokenReview` requests.
+
+=== Create a policy and a role
+
+A Vault *policy* defines which paths a client can access. A Vault *role* in the Kubernetes auth method maps a specific service account to one or more policies.
+
+. Create a read-only policy for the `secrets-demo` secrets:
++
+[source,bash,role=execute]
+----
+oc exec -i -n vault vault-0 -- vault policy write secrets-demo-read - <<'EOF'
+path "secret/data/secrets-demo/*" {
+  capabilities = ["read"]
+}
+EOF
+----
++
+The policy path includes `data/`, because policies work with the real KV version 2 API paths.
++
+Expected output:
++
+----
+Success! Uploaded policy: secrets-demo-read
+----
+
+. Create a role that binds the policy to the `vault-auth` service account in the `secrets-demo` namespace. You create the service account in the next exercise.
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault write auth/kubernetes/role/secrets-demo \
+  bound_service_account_names=vault-auth \
+  bound_service_account_namespaces=secrets-demo \
+  audience=vault \
+  policies=secrets-demo-read \
+  ttl=15m
+----
++
+The parameters do the following:
++
+* `bound_service_account_names` and `bound_service_account_namespaces` accept tokens only from the `vault-auth` service account in the `secrets-demo` namespace.
+* `audience=vault` accepts only tokens that were issued for Vault. Recent Vault versions warn about roles without an audience, and the External Secrets Operator documentation states that Vault 1.21 and later reject logins for such roles.
+* `policies` attaches the read-only policy to the Vault token that a successful login returns.
+* `ttl=15m` limits that Vault token to 15 minutes.
++
+Expected output:
++
+----
+Success! Data written to: auth/kubernetes/role/secrets-demo
+----
+
+=== Verify the Vault configuration
+
+. Read the role back:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault read auth/kubernetes/role/secrets-demo
+----
++
+Expected output:
++
+----
+Key                                         Value
+---                                         -----
+...
+audience                                    vault
+bound_service_account_names                 [vault-auth]
+...
+bound_service_account_namespaces            [secrets-demo]
+...
+token_policies                              [secrets-demo-read]
+...
+token_ttl                                   15m
+...
+----
+
+Vault is ready when:
+
+* `vault kv get` returns the `username` and `password` keys
+* The `kubernetes/` auth method is enabled and configured
+* The `secrets-demo` role is bound to `vault-auth` in `secrets-demo`, with audience `vault` and policy `secrets-demo-read`
+
+[#exercise-2-create-the-secretstore]
+== Exercise 2: Create the SecretStore
+
+A `SecretStore` tells the External Secrets Operator how to reach Vault and how to authenticate. You create it in the `secrets-demo` namespace, together with the service account that it authenticates as.
+
+When the operator connects to Vault, the following happens behind the scenes:
+
+* **Token request**: The operator requests a short-lived token for the `vault-auth` service account, with the audience `vault`.
+* **Login**: The operator logs in to Vault's `kubernetes` auth method with the `secrets-demo` role and that token.
+* **Verification**: Vault verifies the token with the OpenShift API and checks the service account name, namespace, and audience against the role.
+* **Access**: Vault returns a Vault token with the `secrets-demo-read` policy, which the operator uses to read secrets.
+
+No long-lived credential is stored anywhere in the cluster.
+
+=== Create the namespace and service account
+
+. Create the `secrets-demo` project:
++
+[source,bash,role=execute]
+----
+oc new-project secrets-demo
+----
++
+Expected output:
++
+----
+Now using project "secrets-demo" on server "...".
+...
+----
+
+. Create the service account that the operator uses to authenticate to Vault:
++
+[source,bash,role=execute]
+----
+oc create serviceaccount vault-auth -n secrets-demo
+----
++
+Expected output:
++
+----
+serviceaccount/vault-auth created
+----
+
+=== Apply the SecretStore manifest
+
+. Create the `SecretStore`:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<EOF
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: vault-backend
+  namespace: secrets-demo
+spec:
+  provider:
+    vault:
+      server: "http://vault.vault.svc:8200"
+      path: "secret"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "secrets-demo"
+          serviceAccountRef:
+            name: "vault-auth"
+            audiences:
+            - vault
+EOF
+----
++
+The fields under `provider.vault` do the following:
++
+* `server` is the in-cluster address of the Vault service. Development mode serves plain HTTP. A production Vault uses HTTPS, and you add its certificate authority with the `caProvider` field.
+* `path` and `version` select the KV version 2 engine mounted at `secret/`.
+* `auth.kubernetes` names the auth method mount path and the Vault role from Exercise 1.
+* `serviceAccountRef` names the service account to request a token for, and `audiences` must match the `audience` of the Vault role.
++
+Expected output:
++
+----
+secretstore.external-secrets.io/vault-backend created
+----
+
+=== Verify the SecretStore
+
+. Check the status of the `SecretStore`:
++
+[source,bash,role=execute]
+----
+oc get secretstore vault-backend -n secrets-demo
+----
++
+Expected output:
++
+// TODO: verify the column names for SecretStore on the target cluster
+----
+NAME            AGE   STATUS   CAPABILITIES   READY
+vault-backend   10s   Valid    ReadWrite      True
+----
+
+A `True` value in the `READY` column appears only if the operator could reach Vault and log in with the `secrets-demo` role. It confirms that the egress network policy from Module 1, the Vault role, and the service account all work together.
+
+[NOTE]
+====
+If `READY` is `False`, run `oc describe secretstore vault-backend -n secrets-demo` and read the message in the *Events* section. Typical causes are a missing egress rule in the `ExternalSecretsConfig` resource, a typo in the role name, or an audience that does not match the Vault role.
+====
+
+[#exercise-3-sync-with-an-externalsecret]
+== Exercise 3: Sync the credentials with an ExternalSecret
+
+An `ExternalSecret` declares which keys to fetch from the `SecretStore` and which Secret to create from them. Notice that the manifest contains no credentials at all. It is safe to store in Git.
+
+=== Create the ExternalSecret
+
+. Create the `ExternalSecret`:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<EOF
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: database-credentials
+  namespace: secrets-demo
+spec:
+  refreshInterval: 15s
+  secretStoreRef:
+    name: vault-backend
+    kind: SecretStore
+  target:
+    name: database-credentials
+    creationPolicy: Owner
+  data:
+  - secretKey: username
+    remoteRef:
+      key: secrets-demo/database
+      property: username
+  - secretKey: password
+    remoteRef:
+      key: secrets-demo/database
+      property: password
+EOF
+----
++
+The fields do the following:
++
+* `refreshInterval: 15s` makes the operator read Vault again every 15 seconds. The short interval makes the rotation in Module 3 visible quickly. Production workloads usually use a longer interval, such as `1h`.
+* `secretStoreRef` points at the `vault-backend` store.
+* `target.name` is the name of the Secret to create. With `creationPolicy: Owner`, the `ExternalSecret` owns the Secret, and deleting the `ExternalSecret` also deletes the Secret.
+* Each entry in `data` maps one key in the Secret (`secretKey`) to one property of a Vault secret (`remoteRef`). The `key` is relative to the store's `path`, without `data/`.
++
+Expected output:
++
+----
+externalsecret.external-secrets.io/database-credentials created
+----
+
+=== Verify the synced Secret
+
+. Check the status of the `ExternalSecret`:
++
+[source,bash,role=execute]
+----
+oc get externalsecret database-credentials -n secrets-demo
+----
++
+Expected output:
++
+// TODO: verify the column names for ExternalSecret on the target cluster
+----
+NAME                   STORETYPE     STORE           REFRESH INTERVAL   STATUS         READY
+database-credentials   SecretStore   vault-backend   15s                SecretSynced   True
+----
+
+. Check that the Secret exists:
++
+[source,bash,role=execute]
+----
+oc get secret database-credentials -n secrets-demo
+----
++
+Expected output:
++
+----
+NAME                   TYPE     DATA   AGE
+database-credentials   Opaque   2      20s
+----
+
+. Decode the password:
++
+[source,bash,role=execute]
+----
+oc get secret database-credentials -n secrets-demo -o jsonpath='{.data.password}' | base64 -d; echo
+----
++
+Expected output:
++
+----
+S3cr3t-v1
+----
++
+This is the same value you stored in Vault. It also shows why base64 is not encryption: anyone who can read the Secret can decode it. Restrict access to Secrets with RBAC, even when the External Secrets Operator manages them.
+
+. Confirm that the `ExternalSecret` owns the Secret:
++
+[source,bash,role=execute]
+----
+oc get secret database-credentials -n secrets-demo -o jsonpath='{.metadata.ownerReferences[0].kind}/{.metadata.ownerReferences[0].name}{"\n"}'
+----
++
+Expected output:
++
+----
+ExternalSecret/database-credentials
+----
+
+The sync works when:
+
+* The `ExternalSecret` shows `SecretSynced` and `READY` is `True`
+* The `database-credentials` Secret has 2 keys
+* The decoded password matches the value in Vault
+
+[TIP]
+====
+To copy every key of a Vault secret without listing them one by one, use `dataFrom` with `extract` instead of `data`:
+
+[source,yaml]
+----
+  dataFrom:
+  - extract:
+      key: secrets-demo/database
+----
+====
+
+== Learning outcomes
+
+By completing this module, you now understand:
+
+* How the KV version 2 engine stores data under `data/`, and why Vault policies use that path while `vault kv` commands and `ExternalSecret` keys do not
+* How the Vault Kubernetes auth method uses `TokenReview` to trust OpenShift service accounts, and how a role restricts access to one service account, namespace, and audience
+* How a `SecretStore` lets the External Secrets Operator authenticate with a short-lived token instead of a stored Vault token
+* How an `ExternalSecret` maps Vault properties to keys of a native Secret that it owns
+
+== Module summary
+
+You built the connection between Vault and OpenShift, and synced your first secret without writing a credential into any manifest.
+
+**What you accomplished:**
+
+* Stored database credentials in Vault at `secret/secrets-demo/database`
+* Enabled the Kubernetes auth method and created the `secrets-demo-read` policy and the `secrets-demo` role
+* Created the `vault-backend` `SecretStore`, which authenticates as the `vault-auth` service account
+* Synced the credentials into the `database-credentials` Secret with an `ExternalSecret`
+
+**Next steps:**
+
+In xref:05-module-03-sample-app.adoc[Module 3], you deploy an application that uses the `database-credentials` Secret, rotate the password in Vault, and observe how the change reaches the running application.

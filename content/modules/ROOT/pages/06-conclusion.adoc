@@ -1,0 +1,65 @@
+= Conclusion and next steps
+:icons: font
+
+Congratulations! You've completed the Managing Secrets with the External Secrets Operator on OpenShift workshop.
+
+== What you have learned
+
+Throughout this workshop, you've gained hands-on experience with:
+
+* Why Kubernetes Secrets alone are not enough: base64 is not encryption, Secrets end up in Git, and rotation is manual
+* How a secrets repository (HashiCorp Vault), a secrets distributor (the External Secrets Operator), and a secrets consumer (your application) work together
+* How to install the External Secrets Operator for Red Hat OpenShift and deploy its components with an `ExternalSecretsConfig` resource
+* Why the operator denies egress to providers by default, and how to allow traffic only to Vault
+* How the Vault Kubernetes auth method trusts OpenShift service accounts through `TokenReview`, with roles bound to a service account, namespace, and audience
+* How a `SecretStore` authenticates with a short-lived service account token, and how an `ExternalSecret` syncs Vault data into a native Secret
+* How applications consume the synced Secret as environment variables and as mounted files
+* How a rotation in Vault reaches the Secret and the running application, and how to force an immediate sync
+
+== Key takeaways
+
+* **Keep credentials out of Git**: `SecretStore` and `ExternalSecret` manifests describe where a credential lives, not what it is. You can store them in Git safely.
+
+* **Avoid secret zero**: The Kubernetes auth method lets the operator authenticate with a short-lived, audience-bound service account token. No long-lived Vault token is stored in the cluster.
+
+* **Rotate in one place**: You change a credential in Vault, and the External Secrets Operator distributes it on the next refresh, or immediately with `force-sync`.
+
+* **Plan how applications pick up changes**: Mounted Secret files update in running pods. Environment variables require a restart.
+
+* **The Secret is still a Secret**: The synced Secret is stored unencrypted in etcd unless you enable etcd encryption. Protect it with RBAC and, where required, etcd encryption.
+
+== Next steps
+
+Ready to go further? Here are some ideas:
+
+* **Share a store across namespaces**: Replace the namespaced `SecretStore` with a `ClusterSecretStore`, and control which namespaces may use it.
+* **Template Secrets**: Use the `target.template` field of an `ExternalSecret` to build connection strings or configuration files from several Vault properties.
+* **Push secrets to Vault**: Use a `PushSecret` to write a Secret generated on the cluster, such as a certificate, back to Vault.
+* **Run Vault for production**: Use persistent storage, TLS, high availability, and auto-unseal instead of development mode, and add the Vault certificate authority to the `SecretStore` with `caProvider`.
+* **Compare with the Secrets Store CSI Driver**: For workloads whose credentials must never be stored in etcd, consider the Secrets Store CSI Driver instead.
+
+== References
+
+=== Red Hat documentation
+
+* link:https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/security_and_compliance/external-secrets-operator-for-red-hat-openshift[External Secrets Operator for Red Hat OpenShift (Red Hat OpenShift Container Platform 4.22)^]: Installation, `ExternalSecretsConfig`, network policies, and release notes (Modules 1 and 2)
+* link:https://docs.redhat.com/en/learn/learning-paths/how-manage-kubernetes-secrets-red-hat-openshift[How to manage Kubernetes Secrets with Red Hat OpenShift^]: Learning path covering Kubernetes Secrets, repositories and distributors, and choosing between the External Secrets Operator and the Secrets Store CSI Driver (Overview)
+
+=== External Secrets Operator project
+
+* link:https://external-secrets.io/latest/provider/hashicorp-vault/[HashiCorp Vault provider^]: `SecretStore` configuration for Vault and the Kubernetes auth method (Module 2)
+* link:https://external-secrets.io/latest/api/secretstore/[SecretStore API^]: `SecretStore` fields and status conditions (Module 2)
+* link:https://external-secrets.io/latest/api/externalsecret/[ExternalSecret API^]: `ExternalSecret` fields, refresh behavior, and `force-sync` (Modules 2 and 3)
+
+=== HashiCorp Vault
+
+* link:https://developer.hashicorp.com/vault/docs/platform/k8s/helm/openshift[Run Vault on OpenShift^]: Helm installation on OpenShift (Module 1)
+* link:https://developer.hashicorp.com/vault/docs/platform/k8s/helm/configuration[Vault Helm chart configuration^]: Chart values used in this workshop (Module 1)
+* link:https://developer.hashicorp.com/vault/docs/auth/kubernetes[Kubernetes auth method^]: Configuration, roles, and audiences (Module 2)
+* link:https://developer.hashicorp.com/vault/tutorials/kubernetes-platforms/kubernetes-openshift[Install Vault to Red Hat OpenShift^]: Tutorial for Vault on OpenShift with KV secrets and Kubernetes auth (Modules 1 and 2)
+
+== Thank you!
+
+Thank you for participating in this workshop. You've built a complete secrets pipeline from HashiCorp Vault to a running application on OpenShift, and you've seen how central secrets management makes rotation a single change instead of a hunt through manifests.
+
+Keep building, keep learning!

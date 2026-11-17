@@ -1,0 +1,147 @@
+= Workshop details
+:toc:
+:toc-placement: preamble
+:icons: font
+
+== Access information
+
+[cols="1,2"]
+|===
+|Resource |Value
+
+|Web console URL
+|\https://{OPENSHIFT_CONSOLE_URL}
+
+|Username
+|{OPENSHIFT_USERNAME}
+
+|Password
+|{OPENSHIFT_PASSWORD}
+|===
+
+Your user has cluster administrator privileges. You need them to install operators, create namespaces, and grant Vault permission to verify service account tokens.
+
+== Environment
+
+[cols="1,2"]
+|===
+|Component |Version
+
+|Red Hat OpenShift Container Platform
+|{ocp_version}
+
+|External Secrets Operator for Red Hat OpenShift
+|{eso_version} (based on upstream external-secrets {eso_upstream_version}), channel `{eso_channel}`
+
+|HashiCorp Vault Community Edition
+|{vault_version}, installed with the `hashicorp/vault` Helm chart {vault_chart_version}
+
+|OpenShift Web Terminal
+|Includes `oc`, `helm`, and `jq`
+|===
+
+You install Vault and the External Secrets Operator yourself in Module 1. The cluster starts without either of them.
+
+== Using the Web Terminal
+
+You run all commands in this workshop in the OpenShift Web Terminal. The Web Terminal runs directly in your browser, so no local `oc` or `helm` installation is required.
+
+. Open the OpenShift console by navigating to link:https://{OPENSHIFT_CONSOLE_URL}[https://{OPENSHIFT_CONSOLE_URL}^].
+
+. When prompted, log in with your username `{OPENSHIFT_USERNAME}` and password `{OPENSHIFT_PASSWORD}`.
+
+. Click the command-line terminal icon (*>_*) in the upper-right corner of the console masthead.
++
+image::web-terminal-icon.png[Web Terminal icon in the OpenShift console masthead,link=self,window=blank,width=700]
+
+. If you are prompted for a project, keep the suggested project.
+
+. Click *Start* to launch the terminal session.
++
+image::web-terminal-panel.png[Web Terminal start panel in the OpenShift console,link=self,window=blank,width=700]
+
+The Web Terminal is automatically logged in with your user credentials. No `oc login` is required.
+
+When started, the terminal looks like the following:
+
+image::web-terminal-panel2.png[Web Terminal open at the bottom of the OpenShift console,link=self,window=blank,width=700]
+
+[TIP]
+====
+You can open the terminal in a separate browser window by clicking the arrow in the upper-right corner of the terminal window.
+
+image::web-terminal-panel3.png[Button for opening the Web Terminal in a separate window,link=self,window=blank,width=700]
+====
+
+=== Verify your environment
+
+Verify your terminal:
+
+. Check which user you are logged in as:
++
+[source,bash,role=execute]
+----
+oc whoami
+----
++
+Expected output: Your username (`{OPENSHIFT_USERNAME}`).
+
+. Confirm that you have cluster administrator privileges:
++
+[source,bash,role=execute]
+----
+oc auth can-i '*' '*' --all-namespaces
+----
++
+Expected output:
++
+----
+yes
+----
+
+. Confirm that Helm is available:
++
+[source,bash,role=execute]
+----
+helm version --short
+----
++
+Expected output: A Helm client version string, such as `v3.x.y+g...`. The Vault Helm chart requires Helm 3.6 or later.
+
+== Module timing
+
+[cols="2,1"]
+|===
+|Module |Duration
+
+|Overview and environment setup
+|10 minutes
+
+|Module 1: Install HashiCorp Vault and the External Secrets Operator
+|20 minutes
+
+|Module 2: Connect the External Secrets Operator to Vault
+|25 minutes
+
+|Module 3: Use synced secrets in a sample application
+|25 minutes
+|===
+
+== Namespaces used in this workshop
+
+[cols="1,2"]
+|===
+|Namespace |Purpose
+
+|`vault`
+|HashiCorp Vault server
+
+|`external-secrets-operator`
+|External Secrets Operator for Red Hat OpenShift
+
+|`external-secrets`
+|External Secrets Operator components (core controller, webhook, certificate controller)
+
+|`secrets-demo`
+|Your `SecretStore`, `ExternalSecret`, synced Secret, and sample application
+|===

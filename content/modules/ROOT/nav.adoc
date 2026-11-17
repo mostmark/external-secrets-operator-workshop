@@ -1,0 +1,21 @@
+* xref:index.adoc[Home]
+
+* xref:01-overview.adoc[Workshop Overview]
+
+* xref:02-details.adoc[Workshop Details]
+
+* xref:03-module-01-install.adoc[Module 1: Install Vault and the External Secrets Operator]
+** xref:03-module-01-install.adoc#exercise-1-install-vault[Exercise 1: Install HashiCorp Vault]
+** xref:03-module-01-install.adoc#exercise-2-install-the-operator[Exercise 2: Install the Operator]
+** xref:03-module-01-install.adoc#exercise-3-deploy-the-operand[Exercise 3: Deploy the Operator Components]
+
+* xref:04-module-02-connect-vault.adoc[Module 2: Connect the External Secrets Operator to Vault]
+** xref:04-module-02-connect-vault.adoc#exercise-1-prepare-vault[Exercise 1: Prepare Vault]
+** xref:04-module-02-connect-vault.adoc#exercise-2-create-the-secretstore[Exercise 2: Create the SecretStore]
+** xref:04-module-02-connect-vault.adoc#exercise-3-sync-with-an-externalsecret[Exercise 3: Sync with an ExternalSecret]
+
+* xref:05-module-03-sample-app.adoc[Module 3: Use Synced Secrets in an Application]
+** xref:05-module-03-sample-app.adoc#exercise-1-deploy-the-sample-application[Exercise 1: Deploy the Sample Application]
+** xref:05-module-03-sample-app.adoc#exercise-2-rotate-the-secret[Exercise 2: Rotate the Secret]
+
+* xref:06-conclusion.adoc[Conclusion and Next Steps]

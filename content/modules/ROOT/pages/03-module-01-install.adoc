@@ -1,0 +1,481 @@
+= Module 1: Install HashiCorp Vault and the External Secrets Operator
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+*Estimated time*: 20 minutes
+
+Before you can sync any secrets, you need two things on the cluster: a secrets repository that holds the credentials, and a secrets distributor that delivers them to workloads. In this module, you install HashiCorp Vault as the repository and the External Secrets Operator for Red Hat OpenShift as the distributor.
+
+You also configure the operator's network policy. The operator blocks outgoing traffic by default, so it cannot reach Vault until you explicitly allow it.
+
+== Learning objectives
+
+By the end of this module, you'll be able to:
+
+* Install HashiCorp Vault Community Edition on OpenShift with Helm
+* Install the External Secrets Operator for Red Hat OpenShift from the Red Hat Operators catalog
+* Deploy the External Secrets Operator components with an `ExternalSecretsConfig` resource
+* Allow the External Secrets Operator to reach Vault through an egress network policy
+
+[#exercise-1-install-vault]
+== Exercise 1: Install HashiCorp Vault with Helm
+
+HashiCorp publishes an official Helm chart for Vault that supports OpenShift. You install it in development mode, which gives you a running, unsealed Vault server with a single command.
+
+[WARNING]
+====
+Development mode keeps all data in memory and uses the fixed root token `root`. If the Vault pod restarts, all secrets and configuration are lost. Never use development mode outside of a workshop or test environment.
+====
+
+=== Install the Helm chart
+
+. Ensure the Web Terminal is open in the OpenShift console. If you haven't opened it yet, follow the instructions in xref:02-details.adoc#_using_the_web_terminal[Using the Web Terminal].
+
+. Add the HashiCorp Helm repository:
++
+[source,bash,role=execute]
+----
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+----
++
+Expected output:
++
+----
+"hashicorp" has been added to your repositories
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "hashicorp" chart repository
+Update Complete. ⎈Happy Helming!⎈
+----
+
+. Install Vault into a new `vault` namespace:
++
+[source,bash,role=execute,subs="attributes+"]
+----
+helm install vault hashicorp/vault \
+  --version {vault_chart_version} \
+  --namespace vault \
+  --create-namespace \
+  --set global.openshift=true \
+  --set server.image.repository=docker.io/hashicorp/vault \
+  --set server.dev.enabled=true \
+  --set injector.enabled=false \
+  --set ui.enabled=true
+----
++
+The options do the following:
++
+* `global.openshift=true` applies OpenShift-specific settings, such as security contexts that work with the default security context constraints.
+* `server.image.repository` uses the fully qualified name of the Vault Community Edition image.
+* `server.dev.enabled=true` starts Vault in development mode: unsealed, in-memory storage, and root token `root`.
+* `injector.enabled=false` skips the Vault Agent Injector. You use the External Secrets Operator to deliver secrets instead.
+* `ui.enabled=true` enables the Vault web UI.
++
+Expected output:
++
+----
+NAME: vault
+LAST DEPLOYED: ...
+NAMESPACE: vault
+STATUS: deployed
+REVISION: 1
+...
+----
+
+. Wait for the Vault pod to start:
++
+[source,bash,role=execute]
+----
+oc get pods -n vault -w
+----
++
+Wait until `vault-0` shows `1/1 Running`, then press `Ctrl+C` to exit the watch.
++
+----
+NAME      READY   STATUS    RESTARTS   AGE
+vault-0   1/1     Running   0          45s
+----
+
+=== Verify the Vault installation
+
+// TODO: verify the vault status output below against the Vault version in antora.yml
+. Check the status of the Vault server:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault status
+----
++
+Expected output:
++
+[subs="attributes+"]
+----
+Key             Value
+---             -----
+Seal Type       shamir
+Initialized     true
+Sealed          false
+Total Shares    1
+Threshold       1
+Version         {vault_version}
+...
+Storage Type    inmem
+...
+HA Enabled      false
+----
+
+. List the enabled secrets engines:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault secrets list
+----
++
+Expected output:
++
+----
+Path          Type         Accessor              Description
+----          ----         --------              -----------
+cubbyhole/    cubbyhole    cubbyhole_...         per-token private secret storage
+identity/     identity     identity_...          identity store
+secret/       kv           kv_...                key/value secret storage
+sys/          system       system_...            system endpoints used for control, policy and debugging
+----
++
+In development mode, Vault mounts a key/value (KV) version 2 secrets engine at `secret/`. You store your credentials there in Module 2.
+
+Your Vault server is ready when:
+
+* `vault-0` is `1/1 Running`
+* `Initialized` is `true` and `Sealed` is `false`
+* A `kv` secrets engine is mounted at `secret/`
+
+=== Open the Vault UI (optional)
+
+The Vault UI is a convenient way to browse the secrets you create in Module 2. This section is optional. All steps in this workshop also work from the command line.
+
+. Create an edge-terminated route for the Vault service:
++
+[source,bash,role=execute]
+----
+oc create route edge vault --service=vault --port=8200 -n vault
+----
++
+Expected output:
++
+----
+route.route.openshift.io/vault created
+----
+
+. Display the Vault UI URL:
++
+[source,bash,role=execute]
+----
+echo "https://$(oc get route vault -n vault -o jsonpath='{.spec.host}')"
+----
++
+Expected output:
++
+----
+https://vault-vault.apps.<cluster-domain>
+----
+
+. Open the URL in a new browser tab. Select *Token* as the sign-in method, enter `root` as the token, and click *Sign in*.
++
+// TODO: Add screenshot of the Vault UI sign-in page with the Token method selected
+image::vault-ui-login.png[Vault UI sign-in page with the Token method selected,link=self,window=blank,width=700,title="Vault UI sign-in"]
+
+. After signing in, you see the *Secrets engines* page with the `secret/` engine listed.
++
+// TODO: Add screenshot of the Vault UI Secrets engines page showing secret/ and cubbyhole/
+image::vault-ui-secrets-engines.png[Vault UI Secrets engines page listing the secret and cubbyhole engines,link=self,window=blank,width=700,title="Vault secrets engines"]
+
+[#exercise-2-install-the-operator]
+== Exercise 2: Install the External Secrets Operator for Red Hat OpenShift
+
+The External Secrets Operator for Red Hat OpenShift is available from the Red Hat Operators catalog (`redhat-operators`). You install it with three Operator Lifecycle Manager (OLM) resources: a namespace, an `OperatorGroup`, and a `Subscription`.
+
+[IMPORTANT]
+====
+Run only one External Secrets Operator per cluster. If the community External Secrets Operator is installed, uninstall it before you install the External Secrets Operator for Red Hat OpenShift.
+====
+
+[TIP]
+====
+*Alternative to the CLI steps (do not do both)*: You can install the same operator from the web console. Navigate to *Ecosystem* → *Software Catalog*, search for `External Secrets Operator`, select *External Secrets Operator for Red Hat OpenShift*, and click *Install* with the default settings. Then continue with <<_verify_the_operator_installation>>.
+====
+
+=== Create the subscription
+
+. Create the namespace, operator group, and subscription:
++
+[source,bash,role=execute,subs="attributes+"]
+----
+oc apply -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets-operator
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-external-secrets-operator
+  namespace: external-secrets-operator
+spec:
+  targetNamespaces: []
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-external-secrets-operator
+  namespace: external-secrets-operator
+spec:
+  channel: {eso_channel}
+  name: openshift-external-secrets-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+EOF
+----
++
+The `{eso_channel}` channel is the default channel and installs the latest 1.x release of the operator. The empty `targetNamespaces` list makes the operator watch all namespaces.
++
+Expected output:
++
+----
+namespace/external-secrets-operator created
+operatorgroup.operators.coreos.com/openshift-external-secrets-operator created
+subscription.operators.coreos.com/openshift-external-secrets-operator created
+----
+
+// TODO: verify the CSV name and REPLACES column below on the target cluster
+. Watch the installation progress. OLM tracks each installed operator version as a cluster service version (CSV):
++
+[source,bash,role=execute]
+----
+oc get csv -n external-secrets-operator -w
+----
++
+The CSV can take up to a minute to appear. If nothing shows yet, keep waiting. When the `PHASE` column shows `Succeeded`, press `Ctrl+C`.
++
+[subs="attributes+"]
+----
+NAME                                DISPLAY                                           VERSION   REPLACES   PHASE
+external-secrets-operator.v{eso_version}   External Secrets Operator for Red Hat OpenShift   {eso_version}     ...        Succeeded
+----
+
+=== Verify the operator installation
+
+. Check that the operator pod is running:
++
+[source,bash,role=execute]
+----
+oc get pods -n external-secrets-operator
+----
++
+Expected output:
++
+----
+NAME                                                            READY   STATUS    RESTARTS   AGE
+external-secrets-operator-controller-manager-xxxxxxxxxx-xxxxx   1/1     Running   0          1m
+----
+
+. In the OpenShift console, navigate to *Ecosystem* → *Installed Operators* and select *external-secrets-operator* from the *Project* list. The *Status* column for *External Secrets Operator for Red Hat OpenShift* shows *Succeeded*.
++
+// TODO: Add screenshot of Installed Operators showing External Secrets Operator for Red Hat OpenShift with status Succeeded
+image::eso-installed-operator.png[Installed Operators page showing the External Secrets Operator for Red Hat OpenShift with status Succeeded,link=self,window=blank,width=700,title="External Secrets Operator installed"]
+
+The operator is installed when:
+
+* The CSV phase is `Succeeded`
+* The `external-secrets-operator-controller-manager` pod is `1/1 Running`
+
+[#exercise-3-deploy-the-operand]
+== Exercise 3: Deploy the External Secrets Operator components
+
+Installing the operator does not yet deploy the components that sync secrets. You request them by creating an `ExternalSecretsConfig` resource named `cluster`. The operator then deploys three components into the `external-secrets` namespace:
+
+* **Core controller** (`external-secrets`): Watches `SecretStore` and `ExternalSecret` resources and syncs secrets from the external provider
+* **Webhook** (`external-secrets-webhook`): Validates the resources you create
+* **Certificate controller** (`external-secrets-cert-controller`): Manages the certificates that the webhook uses
+
+=== Understand the default network policies
+
+For security, the operator creates network policies that deny all traffic to and from these components, except for the traffic they need to function, such as access to the OpenShift API server and DNS. Traffic to external providers, including Vault, is blocked until you allow it.
+
+You add the allow rule in the `ExternalSecretsConfig` resource itself. The following rule permits the core controller to connect to pods in the `vault` namespace on TCP port 8200. It does not open any other destination.
+
+=== Create the ExternalSecretsConfig resource
+
+. Create the `ExternalSecretsConfig` resource with an egress rule for Vault:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<EOF
+apiVersion: operator.openshift.io/v1alpha1
+kind: ExternalSecretsConfig
+metadata:
+  name: cluster
+  labels:
+    app: external-secrets-operator
+    app.kubernetes.io/name: cluster
+spec:
+  controllerConfig:
+    networkPolicies:
+    - name: allow-egress-to-vault
+      componentName: ExternalSecretsCoreController
+      egress:
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+        ports:
+        - protocol: TCP
+          port: 8200
+EOF
+----
++
+The fields under `networkPolicies` do the following:
++
+* `componentName: ExternalSecretsCoreController` applies the rule to the core controller, the only component that connects to Vault.
+* `egress` uses the standard Kubernetes `NetworkPolicy` egress syntax. The `namespaceSelector` matches the `vault` namespace, and `ports` limits the traffic to the Vault API port.
++
+Expected output:
++
+----
+externalsecretsconfig.operator.openshift.io/cluster created
+----
+
+. Watch the components start:
++
+[source,bash,role=execute]
+----
+oc get pods -n external-secrets -w
+----
++
+Wait until all three pods show `1/1 Running`, then press `Ctrl+C`.
++
+----
+NAME                                                READY   STATUS    RESTARTS   AGE
+external-secrets-xxxxxxxxxx-xxxxx                   1/1     Running   0          40s
+external-secrets-cert-controller-xxxxxxxxxx-xxxxx   1/1     Running   0          40s
+external-secrets-webhook-xxxxxxxxx-xxxxx            1/1     Running   0          40s
+----
+
+=== Verify the operator components
+
+. Check the status conditions of the `ExternalSecretsConfig` resource:
++
+[source,bash,role=execute]
+----
+oc get externalsecretsconfig cluster -o jsonpath='{.status.conditions}' | jq .
+----
++
+Expected output:
++
+----
+[
+  {
+    "lastTransitionTime": "...",
+    "message": "",
+    "observedGeneration": 1,
+    "reason": "Ready",
+    "status": "False",
+    "type": "Degraded"
+  },
+  {
+    "lastTransitionTime": "...",
+    "message": "reconciliation successful",
+    "observedGeneration": 1,
+    "reason": "Ready",
+    "status": "True",
+    "type": "Ready"
+  }
+]
+----
+
+. List the network policies that the operator created:
++
+[source,bash,role=execute]
+----
+oc get networkpolicy -n external-secrets
+----
++
+Policies that start with `eso-sys-` are managed by the operator. Your custom policy has the `eso-user-` prefix.
++
+// TODO: verify the full list of eso-sys- policy names on the target cluster
+----
+NAME                              POD-SELECTOR   AGE
+eso-sys-allow-to-dns              ...            1m
+eso-sys-deny-all-traffic          ...            1m
+...
+eso-user-allow-egress-to-vault    ...            1m
+----
+
+. Inspect your egress rule:
++
+[source,bash,role=execute]
+----
+oc describe networkpolicy eso-user-allow-egress-to-vault -n external-secrets
+----
++
+In the output, look for the egress section:
++
+----
+  Allowing egress traffic:
+    To Port: 8200/TCP
+    To:
+      NamespaceSelector: kubernetes.io/metadata.name=vault
+----
+
+. Confirm that the External Secrets Operator APIs are available:
++
+[source,bash,role=execute]
+----
+oc api-resources --api-group=external-secrets.io
+----
++
+Expected output includes the resources you use in the next module:
++
+----
+NAME                  SHORTNAMES   APIVERSION               NAMESPACED   KIND
+...
+clustersecretstores   css          external-secrets.io/v1   false        ClusterSecretStore
+externalsecrets       es           external-secrets.io/v1   true         ExternalSecret
+...
+secretstores          ss           external-secrets.io/v1   true         SecretStore
+----
+
+The External Secrets Operator is ready when:
+
+* The `ExternalSecretsConfig` condition `Ready` is `True` and `Degraded` is `False`
+* The core controller, webhook, and certificate controller pods are `1/1 Running`
+* The `eso-user-allow-egress-to-vault` network policy allows TCP port 8200 to the `vault` namespace
+
+So far, you have only checked the configuration of the network policy. You confirm that the operator can actually reach Vault in Module 2, when your `SecretStore` reports that it is ready.
+
+== Learning outcomes
+
+By completing this module, you now understand:
+
+* How the Vault Helm chart deploys a development-mode Vault server on OpenShift, and why development mode is only suitable for testing
+* How OLM installs the External Secrets Operator for Red Hat OpenShift from a `Subscription`
+* The difference between installing the operator and deploying its components with an `ExternalSecretsConfig` resource named `cluster`
+* Why the External Secrets Operator denies egress to providers by default, and how a scoped egress rule allows it to reach only Vault
+
+== Module summary
+
+You now have both halves of the secrets pipeline running on your cluster.
+
+**What you accomplished:**
+
+* Installed HashiCorp Vault {vault_version} in development mode
+* Installed the External Secrets Operator for Red Hat OpenShift from the `{eso_channel}` channel
+* Deployed the operator components with an `ExternalSecretsConfig` resource
+* Allowed the core controller to reach Vault on TCP port 8200
+
+**Next steps:**
+
+In xref:04-module-02-connect-vault.adoc[Module 2], you store credentials in Vault, configure Vault to trust OpenShift service accounts, and sync your first secret with an `ExternalSecret`.
