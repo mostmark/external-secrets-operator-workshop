@@ -54,9 +54,7 @@ You run all commands in this workshop in the OpenShift Web Terminal. The Web Ter
 +
 image::web-terminal-icon.png[Web Terminal icon in the OpenShift console masthead,link=self,window=blank,width=700]
 
-. If you are prompted for a project, keep the suggested project.
-
-. Click *Start* to launch the terminal session.
+. Click *Start* to launch the terminal session. As a cluster administrator, your terminal always runs in the `openshift-terminal` project, so the project field is preselected and cannot be changed.
 +
 image::web-terminal-panel.png[Web Terminal start panel in the OpenShift console,link=self,window=blank,width=700]
 
