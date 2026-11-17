@@ -231,7 +231,6 @@ Mounted file password            : S3cr3t-v1
 
 . Open the URL from `echo $APP_URL` in a new browser tab to see the same output.
 +
-// TODO: Add screenshot of the sample application in the browser showing S3cr3t-v1 in all four lines
 image::sample-app-v1.png[Sample application in a browser showing the username and password from environment variables and mounted files,link=self,window=blank,width=700,title="Sample application with the original password"]
 
 The application works when:
@@ -408,7 +407,6 @@ The new password is on the cluster immediately, without waiting for the refresh 
 
 . If you opened the Vault UI in Module 1, navigate to *secret* → *secrets-demo* → *database* and click the *Version History* tab. Vault keeps all 3 versions of the secret, which gives you an audit trail and the option to roll back.
 +
-// TODO: Add screenshot of the Vault UI version history for secret/secrets-demo/database showing versions 1, 2, and 3
 image::vault-ui-version-history.png[Vault UI version history for the secrets-demo/database secret showing 3 versions,link=self,window=blank,width=700,title="Secret version history in Vault"]
 
 === Verify the rotation

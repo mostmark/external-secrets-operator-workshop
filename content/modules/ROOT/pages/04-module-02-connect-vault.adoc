@@ -72,7 +72,6 @@ username    app_user
 
 . If you opened the Vault UI in Module 1, navigate to *secret* → *secrets-demo* → *database* to see the same secret.
 +
-// TODO: Add screenshot of the Vault UI showing secret/secrets-demo/database with keys username and password
 image::vault-ui-database-secret.png[Vault UI showing the secrets-demo/database secret with the username and password keys,link=self,window=blank,width=700,title="Database credentials in Vault"]
 
 === Enable the Kubernetes auth method

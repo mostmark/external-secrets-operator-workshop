@@ -280,7 +280,6 @@ external-secrets-operator-controller-manager-xxxxxxxxxx-xxxxx   1/1     Running 
 
 . In the OpenShift console, navigate to *Ecosystem* → *Installed Operators* and select *external-secrets-operator* from the *Project* list. The *Status* column for *External Secrets Operator for Red Hat OpenShift* shows *Succeeded*.
 +
-// TODO: Add screenshot of Installed Operators showing External Secrets Operator for Red Hat OpenShift with status Succeeded
 image::eso-installed-operator.png[Installed Operators page showing the External Secrets Operator for Red Hat OpenShift with status Succeeded,link=self,window=blank,width=700,title="External Secrets Operator installed"]
 
 The operator is installed when:
