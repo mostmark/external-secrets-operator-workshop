@@ -32,6 +32,7 @@ Throughout this workshop, you've gained hands-on experience with:
 
 Ready to go further? Here are some ideas:
 
+* **Connect another provider**: Create a `SecretStore` for a cloud provider, such as AWS Secrets Manager, Azure Key Vault, or Google Secret Manager. Your `ExternalSecret` resources keep the same structure. Only the provider and authentication settings in the `SecretStore` change.
 * **Share a store across namespaces**: Replace the namespaced `SecretStore` with a `ClusterSecretStore`, and control which namespaces may use it.
 * **Template Secrets**: Use the `target.template` field of an `ExternalSecret` to build connection strings or configuration files from several Vault properties.
 * **Push secrets to Vault**: Use a `PushSecret` to write a Secret generated on the cluster, such as a certificate, back to Vault.
@@ -42,11 +43,12 @@ Ready to go further? Here are some ideas:
 
 === Red Hat documentation
 
-* link:https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/security_and_compliance/external-secrets-operator-for-red-hat-openshift[External Secrets Operator for Red Hat OpenShift (Red Hat OpenShift Container Platform 4.22)^]: Installation, `ExternalSecretsConfig`, network policies, and release notes (Modules 1 and 2)
+* link:https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/security_and_compliance/external-secrets-operator-for-red-hat-openshift[External Secrets Operator for Red Hat OpenShift (Red Hat OpenShift Container Platform 4.22)^]: Installation, `ExternalSecretsConfig`, network policies, tested providers, and release notes (Home, Modules 1 and 2)
 * link:https://docs.redhat.com/en/learn/learning-paths/how-manage-kubernetes-secrets-red-hat-openshift[How to manage Kubernetes Secrets with Red Hat OpenShift^]: Learning path covering Kubernetes Secrets, repositories and distributors, and choosing between the External Secrets Operator and the Secrets Store CSI Driver (Overview)
 
 === External Secrets Operator project
 
+* link:https://external-secrets.io/latest/introduction/stability-support/[Stability and support^]: Providers supported by the upstream project (Next steps)
 * link:https://external-secrets.io/latest/provider/hashicorp-vault/[HashiCorp Vault provider^]: `SecretStore` configuration for Vault and the Kubernetes auth method (Module 2)
 * link:https://external-secrets.io/latest/api/secretstore/[SecretStore API^]: `SecretStore` fields and status conditions (Module 2)
 * link:https://external-secrets.io/latest/api/externalsecret/[ExternalSecret API^]: `ExternalSecret` fields, refresh behavior, and `force-sync` (Modules 2 and 3)

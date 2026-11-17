@@ -3,7 +3,7 @@
 :toc-placement: preamble
 :icons: font
 
-This workshop shows you how to keep credentials out of Git and out of hand-written manifests by storing them in HashiCorp Vault and syncing them into Red Hat OpenShift Container Platform with the External Secrets Operator (ESO).
+This workshop shows you how to keep credentials out of Git and out of hand-written manifests by storing them in HashiCorp Vault, used here as the example provider, and syncing them into Red Hat OpenShift Container Platform with the External Secrets Operator (ESO).
 
 == Why Kubernetes Secrets alone are not enough
 

@@ -2,11 +2,17 @@
 
 Welcome to the Managing Secrets with the External Secrets Operator on OpenShift workshop!
 
+== About this workshop
+
+The External Secrets Operator (ESO) syncs secrets from an external secrets management system into native Kubernetes Secrets. It supports many providers. Red Hat tests the External Secrets Operator for Red Hat OpenShift with AWS Secrets Manager, HashiCorp Vault, Google Secret Manager, Azure Key Vault, and IBM Cloud Secrets Manager.
+
+This workshop uses HashiCorp Vault as the example provider because it runs on your cluster and needs no cloud account. The `SecretStore` and `ExternalSecret` resources you create work the same way with every provider. Only the provider and authentication settings in the `SecretStore` change.
+
 == What you'll learn
 
 In this workshop, you will:
 
-* Explain why Kubernetes Secrets stored in Git are a risk and how the External Secrets Operator (ESO) addresses it
+* Explain why Kubernetes Secrets stored in Git are a risk and how ESO addresses it
 * Install the External Secrets Operator for Red Hat OpenShift
 * Store secrets in the key/value (KV) engine of HashiCorp Vault
 * Configure the Vault Kubernetes auth method so ESO authenticates with a service account instead of a static token
@@ -17,7 +23,7 @@ In this workshop, you will:
 
 == Who this is for
 
-This workshop is designed for platform engineers, developers, and architects who want to sync secrets from HashiCorp Vault into Red Hat OpenShift Container Platform by using the External Secrets Operator.
+This workshop is designed for platform engineers, developers, and architects who want to sync secrets from an external secrets manager into Red Hat OpenShift Container Platform by using the External Secrets Operator.
 
 **Experience level**: Beginner
 

@@ -2,6 +2,8 @@
 
 A hands-on workshop that teaches how to sync secrets from HashiCorp Vault into Red Hat OpenShift with the External Secrets Operator for Red Hat OpenShift. Participants install Vault and the operator, connect them with the Vault Kubernetes auth method, sync credentials into a native Kubernetes Secret, and consume and rotate those credentials in a sample application.
 
+HashiCorp Vault serves as the example secrets store. The same approach applies to the other providers that the External Secrets Operator supports, such as AWS Secrets Manager, Azure Key Vault, and Google Secret Manager.
+
 The workshop takes 1 to 1.5 hours and is aimed at beginner platform engineers, developers, and architects.
 
 The content is built with Antora and published as a static site using the Red Hat Demo Platform (Showroom) UI theme.
