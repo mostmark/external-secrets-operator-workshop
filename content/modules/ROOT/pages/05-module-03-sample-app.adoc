@@ -440,4 +440,4 @@ You completed the secrets pipeline from Vault to a running application, and rota
 
 **Next steps:**
 
-Continue to the xref:06-conclusion.adoc[Conclusion] for a summary of the workshop and resources for further learning.
+Continue to xref:06-module-04-share-and-template.adoc[Module 4: Share and shape secrets across the cluster] to share secrets across namespaces and build new values with templates.

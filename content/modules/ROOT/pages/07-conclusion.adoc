@@ -15,6 +15,8 @@ Throughout this workshop, you've gained hands-on experience with:
 * How a `SecretStore` authenticates with a short-lived service account token, and how an `ExternalSecret` syncs Vault data into a native Secret
 * How applications consume the synced Secret as environment variables and as mounted files
 * How a rotation in Vault reaches the Secret and the running application, and how to force an immediate sync
+* How a `ClusterSecretStore` with conditions and a `ClusterExternalSecret` share secrets across selected namespaces
+* How templates build connection strings and configuration files from secret values
 
 == Key takeaways
 
@@ -26,6 +28,8 @@ Throughout this workshop, you've gained hands-on experience with:
 
 * **Plan how applications pick up changes**: Mounted Secret files update in running pods. Environment variables require a restart.
 
+* **Set up access once**: A `ClusterSecretStore` and a `ClusterExternalSecret` let a platform team offer secrets to many namespaces. A namespace label grants access, and removing the label revokes it.
+
 * **The Secret is still a Secret**: The synced Secret is stored unencrypted in etcd unless you enable etcd encryption. Protect it with RBAC and, where required, etcd encryption.
 
 == Next steps
@@ -33,8 +37,7 @@ Throughout this workshop, you've gained hands-on experience with:
 Ready to go further? Here are some ideas:
 
 * **Connect another provider**: Create a `SecretStore` for a cloud provider, such as AWS Secrets Manager, Azure Key Vault, or Google Secret Manager. Your `ExternalSecret` resources keep the same structure. Only the provider and authentication settings in the `SecretStore` change.
-* **Share a store across namespaces**: Replace the namespaced `SecretStore` with a `ClusterSecretStore`, and control which namespaces may use it.
-* **Template Secrets**: Use the `target.template` field of an `ExternalSecret` to build connection strings or configuration files from several Vault properties.
+* **Generate secrets**: Use a generator, such as `Password`, to let the operator create a value instead of copying one, or `VaultDynamicSecret` for short-lived database credentials from Vault.
 * **Push secrets to Vault**: Use a `PushSecret` to write a Secret generated on the cluster, such as a certificate, back to Vault.
 * **Run Vault for production**: Use persistent storage, TLS, high availability, and auto-unseal instead of development mode, and add the Vault certificate authority to the `SecretStore` with `caProvider`.
 * **Compare with the Secrets Store CSI Driver**: For workloads whose credentials must never be stored in etcd, consider the Secrets Store CSI Driver instead.
@@ -51,7 +54,12 @@ Ready to go further? Here are some ideas:
 * link:https://external-secrets.io/latest/introduction/stability-support/[Stability and support^]: Providers supported by the upstream project (Next steps)
 * link:https://external-secrets.io/latest/provider/hashicorp-vault/[HashiCorp Vault provider^]: `SecretStore` configuration for Vault and the Kubernetes auth method (Module 2)
 * link:https://external-secrets.io/latest/api/secretstore/[SecretStore API^]: `SecretStore` fields and status conditions (Module 2)
-* link:https://external-secrets.io/latest/api/externalsecret/[ExternalSecret API^]: `ExternalSecret` fields, refresh behavior, and `force-sync` (Modules 2 and 3)
+* link:https://external-secrets.io/latest/api/externalsecret/[ExternalSecret API^]: `ExternalSecret` fields, refresh behavior, and `force-sync` (Modules 2, 3, and 4)
+* link:https://external-secrets.io/latest/api/clustersecretstore/[ClusterSecretStore API^]: Cluster-scoped stores and namespace `conditions` (Module 4)
+* link:https://external-secrets.io/latest/api/clusterexternalsecret/[ClusterExternalSecret API^]: Namespace selectors and provisioned namespaces (Module 4)
+* link:https://external-secrets.io/latest/guides/templating/[Advanced templating^]: Template engine, `mergePolicy`, `templateFrom`, and typed Secrets (Module 4)
+* link:https://external-secrets.io/latest/api/pushsecret/[PushSecret API^]: Writing Secrets from the cluster to a provider (Next steps)
+* link:https://external-secrets.io/latest/api/generator/[Generators^]: Passwords, dynamic credentials, and other generated values (Next steps)
 
 === HashiCorp Vault
 

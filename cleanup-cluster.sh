@@ -4,6 +4,8 @@
 # "Managing Secrets with the External Secrets Operator on OpenShift" workshop
 # installs, whether or not the learner ran the optional cleanup in Module 3:
 #   - the secrets-demo project (sample app, SecretStore, ExternalSecret)
+#   - the Module 4 resources (ClusterExternalSecret, ClusterSecretStore, and the
+#     secrets-platform, tenant-a, and tenant-b projects)
 #   - the External Secrets Operator for Red Hat OpenShift, its components and CRDs
 #   - HashiCorp Vault (Helm release, namespace, cluster role binding)
 #   - the lab guide application and the OpenShift Web Terminal operator
@@ -27,8 +29,8 @@ echo "Logged in as: $(oc whoami)"
 echo "Server: $(oc whoami --show-server)"
 
 echo
-echo "WARNING: This will delete the workshop projects (secrets-demo, vault, external-secrets,"
-echo "external-secrets-operator, lab-guide), uninstall the External Secrets Operator including its CRDs,"
+echo "WARNING: This will delete the workshop projects (secrets-demo, secrets-platform, tenant-a, tenant-b,"
+echo "vault, external-secrets, external-secrets-operator, lab-guide), uninstall the External Secrets Operator including its CRDs,"
 echo "and uninstall the Web Terminal operator."
 echo "Any ExternalSecret or SecretStore elsewhere on the cluster will be deleted with the CRDs."
 read -rp "Are you sure? (y/N): " CONFIRM
@@ -41,12 +43,22 @@ echo
 echo "Cleaning up cluster..."
 echo
 
-# Workshop application project
+# Workshop projects and cluster-scoped workshop resources
 # ------------------------------------------------------------------------------------
-echo "=== Removing the secrets-demo project ==="
 # Delete while the ESO controller still runs, so ESO-owned resources are finalized cleanly
-oc delete project secrets-demo --ignore-not-found
-oc wait --for=delete namespace/secrets-demo --timeout=180s 2>/dev/null || true
+echo "=== Removing the Module 4 cluster-scoped resources ==="
+if oc get crd clusterexternalsecrets.external-secrets.io &>/dev/null; then
+  oc delete clusterexternalsecret api-credentials --ignore-not-found
+fi
+if oc get crd clustersecretstores.external-secrets.io &>/dev/null; then
+  oc delete clustersecretstore vault-shared --ignore-not-found
+fi
+echo
+
+echo "=== Removing the workshop projects ==="
+oc delete project secrets-demo secrets-platform tenant-a tenant-b --ignore-not-found
+oc wait --for=delete namespace/secrets-demo namespace/secrets-platform namespace/tenant-a namespace/tenant-b \
+  --timeout=180s 2>/dev/null || true
 echo
 
 # External Secrets Operator for Red Hat OpenShift
@@ -179,6 +191,7 @@ oc delete clusterrolebinding devworkspace-webhook-server --ignore-not-found
 echo
 echo "============================================"
 echo "Cluster cleanup complete!"
-echo "Removed the workshop projects, the lab guide, HashiCorp Vault, and the External Secrets Operator."
+echo "Removed the workshop projects, the Module 4 cluster-scoped resources, the lab guide,"
+echo "HashiCorp Vault, and the External Secrets Operator."
 echo "Web Terminal operator has been uninstalled."
 echo "============================================"

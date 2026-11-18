@@ -61,11 +61,12 @@ This workshop focuses on ESO.
 
 == What you will build
 
-Over three modules, you will build a complete secrets pipeline:
+Over four modules, you will build a complete secrets pipeline:
 
 * **Module 1**: Install HashiCorp Vault with Helm and install the External Secrets Operator for Red Hat OpenShift. Allow the operator to reach Vault through its network policy.
 * **Module 2**: Store database credentials in Vault, configure Vault to trust OpenShift service accounts, create a `SecretStore`, and sync the credentials into a Secret with an `ExternalSecret`.
 * **Module 3**: Deploy a sample application that reads the synced Secret, rotate the password in Vault, and observe how the change reaches the running application.
+* **Module 4**: Share the Vault connection across namespaces with a `ClusterSecretStore`, distribute a Secret to labeled namespaces with a `ClusterExternalSecret`, and build a connection string and a configuration file with a template.
 
 == Learning objectives
 
@@ -79,6 +80,8 @@ By the end of this workshop, you will be able to:
 * Define an `ExternalSecret` that syncs Vault data into a native Kubernetes Secret
 * Deploy a sample application that reads the synced Secret as environment variables and as a mounted volume
 * Rotate a secret in Vault and observe how ESO refreshes it in the running application
+* Share a store across namespaces with a `ClusterSecretStore` and distribute Secrets with a `ClusterExternalSecret`
+* Build connection strings and configuration files from secret values with templates
 
 == Common questions
 

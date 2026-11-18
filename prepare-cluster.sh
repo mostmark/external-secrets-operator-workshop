@@ -4,8 +4,8 @@
 # "Managing Secrets with the External Secrets Operator on OpenShift" workshop.
 #
 # The workshop is admin-only and uses fixed, cluster-wide names (vault,
-# external-secrets-operator, external-secrets, secrets-demo), so one cluster
-# serves one learner. Learners install Vault and the External Secrets Operator
+# external-secrets-operator, external-secrets, secrets-demo, secrets-platform,
+# tenant-a, tenant-b), so one cluster serves one learner. Learners install Vault and the External Secrets Operator
 # themselves; this script installs the Web Terminal operator, deploys the lab
 # guide, and checks that nothing on the cluster would get in the way.
 #
@@ -72,7 +72,7 @@ if [ -n "$OTHER_ESO_SUBS" ]; then
 fi
 
 # Leftovers from a previous run
-for NS in vault external-secrets-operator external-secrets secrets-demo; do
+for NS in vault external-secrets-operator external-secrets secrets-demo secrets-platform tenant-a tenant-b; do
   if oc get namespace "$NS" &>/dev/null; then
     warn "Namespace '$NS' already exists. A previous workshop run may still be installed."
   fi

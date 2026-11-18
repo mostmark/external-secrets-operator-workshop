@@ -1,0 +1,662 @@
+= Module 4: Share and shape secrets across the cluster
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+*Estimated time*: 30 minutes
+
+So far, everything happened in one namespace: the `secrets-demo` namespace has its own `SecretStore`, its own service account, its own Vault role, and its own `ExternalSecret`. That works for one application, but on a shared cluster it means every team repeats the same setup to reach the same Vault.
+
+In this module, you use three features that let a platform team set up access once and offer it to many namespaces, and that let applications receive secrets in exactly the format they need:
+
+* A `ClusterSecretStore` is a store for the whole cluster. Conditions limit which namespaces may use it.
+* A `ClusterExternalSecret` creates the same `ExternalSecret` in every namespace that matches a label, and removes it when the namespace no longer matches.
+* A template in an `ExternalSecret` builds new values, such as a connection string or a configuration file, from the values it fetches.
+
+== Learning objectives
+
+By the end of this module, you'll be able to:
+
+* Create a `ClusterSecretStore` and restrict it to labeled namespaces with conditions
+* Distribute a Secret to many namespaces with a `ClusterExternalSecret`
+* Render a connection string and a configuration file from Vault values with `target.template`
+* Explain how `mergePolicy` controls whether templated keys replace or extend the fetched keys
+
+[#exercise-1-create-a-clustersecretstore]
+== Exercise 1: Create a ClusterSecretStore
+
+A `ClusterSecretStore` has the same `provider` section as a `SecretStore`, but it is cluster-scoped. The platform team configures the Vault connection and authentication once, and application namespaces reference the store by name. The service account that the store authenticates as lives in a namespace that only the platform team controls, so application teams never handle Vault authentication.
+
+Without restrictions, every namespace on the cluster could read through a `ClusterSecretStore`. The `conditions` field limits the store to selected namespaces.
+
+=== Store a shared secret in Vault
+
+. Store an API key that several namespaces need:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault kv put secret/shared/api-credentials api_key=ak-shared-0001
+----
++
+Expected output:
++
+----
+========== Secret Path ==========
+secret/data/shared/api-credentials
+...
+version            1
+----
+
+. Create a read-only policy for the secrets under `shared/`:
++
+[source,bash,role=execute]
+----
+oc exec -i -n vault vault-0 -- vault policy write shared-read - <<'EOF'
+path "secret/data/shared/*" {
+  capabilities = ["read"]
+}
+EOF
+----
++
+Expected output:
++
+----
+Success! Uploaded policy: shared-read
+----
+
+. Create a Vault role for the `eso-cluster-store` service account in the `secrets-platform` namespace:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault write auth/kubernetes/role/cluster-store \
+  bound_service_account_names=eso-cluster-store \
+  bound_service_account_namespaces=secrets-platform \
+  audience=vault \
+  policies=shared-read \
+  ttl=15m
+----
++
+The role works like the `secrets-demo` role from Module 2. Only the service account, the namespace, and the policy differ.
++
+Expected output:
++
+----
+Success! Data written to: auth/kubernetes/role/cluster-store
+----
+
+=== Create the ClusterSecretStore
+
+. Create the `secrets-platform` namespace and the service account that the store authenticates as:
++
+[source,bash,role=execute]
+----
+oc create namespace secrets-platform
+oc create serviceaccount eso-cluster-store -n secrets-platform
+----
++
+Expected output:
++
+----
+namespace/secrets-platform created
+serviceaccount/eso-cluster-store created
+----
+
+. Create the `ClusterSecretStore`:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<'EOF'
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: vault-shared
+spec:
+  conditions:
+  - namespaceSelector:
+      matchLabels:
+        shared-secrets: enabled
+  provider:
+    vault:
+      server: "http://vault.vault.svc:8200"
+      path: "secret"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "cluster-store"
+          serviceAccountRef:
+            name: "eso-cluster-store"
+            namespace: "secrets-platform"
+            audiences:
+            - vault
+EOF
+----
++
+Compared with the `SecretStore` from Module 2, three things are different:
++
+* The resource has no `metadata.namespace`, because it is cluster-scoped.
+* `serviceAccountRef` includes a `namespace`, because the store no longer belongs to a namespace that could imply it.
+* `conditions` allows only namespaces with the label `shared-secrets=enabled` to use the store. Instead of a label selector, you can also list namespaces by name with `namespaces` or match them with `namespaceRegexes`.
++
+Expected output:
++
+----
+clustersecretstore.external-secrets.io/vault-shared created
+----
+
+. Check the status of the store:
++
+[source,bash,role=execute]
+----
+oc get clustersecretstore vault-shared
+----
++
+Expected output:
++
+// TODO: verify the column names for ClusterSecretStore on the target cluster
+----
+NAME           AGE   STATUS   CAPABILITIES   READY
+vault-shared   10s   Valid    ReadWrite      True
+----
+
+=== Test the namespace conditions
+
+. Create a namespace for an application team, without any labels:
++
+[source,bash,role=execute]
+----
+oc create namespace tenant-a
+----
++
+Expected output:
++
+----
+namespace/tenant-a created
+----
+
+. Create an `ExternalSecret` in `tenant-a` that uses the `ClusterSecretStore`:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<'EOF'
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: api-credentials
+  namespace: tenant-a
+spec:
+  refreshInterval: 1m
+  secretStoreRef:
+    name: vault-shared
+    kind: ClusterSecretStore
+  target:
+    name: api-credentials
+    creationPolicy: Owner
+  data:
+  - secretKey: api_key
+    remoteRef:
+      key: shared/api-credentials
+      property: api_key
+EOF
+----
++
+The only difference from the `ExternalSecret` in Module 2 is `secretStoreRef.kind: ClusterSecretStore`.
++
+Expected output:
++
+----
+externalsecret.external-secrets.io/api-credentials created
+----
+
+. Check the status of the `ExternalSecret`:
++
+[source,bash,role=execute]
+----
+oc get externalsecret api-credentials -n tenant-a
+----
++
+Expected output:
++
+// TODO: verify the status columns for a denied ExternalSecret on the target cluster
+----
+NAME              STORETYPE            STORE          REFRESH INTERVAL   STATUS              READY
+api-credentials   ClusterSecretStore   vault-shared   1m                 SecretSyncedError   False
+----
++
+The sync fails because `tenant-a` doesn't have the `shared-secrets=enabled` label.
+
+. Read the reason in the events of the `ExternalSecret`:
++
+[source,bash,role=execute]
+----
+oc describe externalsecret api-credentials -n tenant-a | sed -n '/Events:/,$p'
+----
++
+The output contains a message similar to the following:
++
+// TODO: verify the event message on the target cluster
+----
+... using cluster store "vault-shared" is not allowed from namespace "tenant-a": denied by spec.condition
+----
+
+. Label the namespace, and trigger an immediate sync instead of waiting for the next retry:
++
+[source,bash,role=execute]
+----
+oc label namespace tenant-a shared-secrets=enabled
+oc annotate externalsecret api-credentials -n tenant-a force-sync=$(date +%s) --overwrite
+sleep 5
+oc get externalsecret api-credentials -n tenant-a
+----
++
+Expected output:
++
+----
+namespace/tenant-a labeled
+externalsecret.external-secrets.io/api-credentials annotated
+NAME              STORETYPE            STORE          REFRESH INTERVAL   STATUS         READY
+api-credentials   ClusterSecretStore   vault-shared   1m                 SecretSynced   True
+----
+
+. Read the synced API key:
++
+[source,bash,role=execute]
+----
+oc get secret api-credentials -n tenant-a -o jsonpath='{.data.api_key}' | base64 -d; echo
+----
++
+Expected output:
++
+----
+ak-shared-0001
+----
+
+. Delete the `ExternalSecret`. In the next exercise, a `ClusterExternalSecret` creates it for you.
++
+[source,bash,role=execute]
+----
+oc delete externalsecret api-credentials -n tenant-a
+oc get secret api-credentials -n tenant-a
+----
++
+Expected output:
++
+----
+externalsecret.external-secrets.io "api-credentials" deleted
+Error from server (NotFound): secrets "api-credentials" not found
+----
++
+Because of `creationPolicy: Owner`, deleting the `ExternalSecret` also deleted the Secret.
+
+=== Verify the ClusterSecretStore
+
+The `ClusterSecretStore` works when:
+
+* `vault-shared` shows `READY` `True`
+* An `ExternalSecret` in an unlabeled namespace is denied by the store conditions
+* The same `ExternalSecret` syncs after you label the namespace with `shared-secrets=enabled`
+
+[#exercise-2-distribute-with-a-clusterexternalsecret]
+== Exercise 2: Distribute a Secret with a ClusterExternalSecret
+
+With a `ClusterSecretStore`, every namespace still needs its own `ExternalSecret`. A `ClusterExternalSecret` removes that step. It contains an `ExternalSecret` specification and a namespace selector. The operator creates the `ExternalSecret` in every namespace that matches the selector, and deletes it from namespaces that stop matching.
+
+=== Create the ClusterExternalSecret
+
+. Create the `ClusterExternalSecret`:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<'EOF'
+apiVersion: external-secrets.io/v1
+kind: ClusterExternalSecret
+metadata:
+  name: api-credentials
+spec:
+  externalSecretName: api-credentials
+  namespaceSelectors:
+  - matchLabels:
+      shared-secrets: enabled
+  refreshTime: 1m
+  externalSecretSpec:
+    refreshInterval: 1m
+    secretStoreRef:
+      name: vault-shared
+      kind: ClusterSecretStore
+    target:
+      name: api-credentials
+      creationPolicy: Owner
+    data:
+    - secretKey: api_key
+      remoteRef:
+        key: shared/api-credentials
+        property: api_key
+EOF
+----
++
+The fields do the following:
++
+* `externalSecretName` is the name of the `ExternalSecret` that the operator creates in each namespace.
+* `namespaceSelectors` selects the namespaces. This exercise uses the same label as the store conditions, so one label both subscribes a namespace to the Secret and allows it to use the store.
+* `refreshTime` sets how often the operator checks which namespaces match the selector.
+* `externalSecretSpec` is a complete `ExternalSecret` specification, the same one you created by hand in Exercise 1.
++
+Expected output:
++
+----
+clusterexternalsecret.external-secrets.io/api-credentials created
+----
+
+. List the namespaces that the operator provisioned:
++
+[source,bash,role=execute]
+----
+oc get clusterexternalsecret api-credentials -o jsonpath='{.status.provisionedNamespaces}'; echo
+----
++
+Expected output:
++
+// TODO: verify the provisionedNamespaces status field on the target cluster
+----
+["tenant-a"]
+----
+
+. Check that the Secret is back in `tenant-a`:
++
+[source,bash,role=execute]
+----
+oc get secret api-credentials -n tenant-a -o jsonpath='{.data.api_key}' | base64 -d; echo
+----
++
+Expected output:
++
+----
+ak-shared-0001
+----
+
+=== Add and remove namespaces
+
+. Create a second namespace and label it:
++
+[source,bash,role=execute]
+----
+oc create namespace tenant-b
+oc label namespace tenant-b shared-secrets=enabled
+----
++
+Expected output:
++
+----
+namespace/tenant-b created
+namespace/tenant-b labeled
+----
+
+. List all `ExternalSecret` resources named `api-credentials` in the cluster:
++
+[source,bash,role=execute]
+----
+oc get externalsecret -A --field-selector metadata.name=api-credentials
+----
++
+Expected output (if `tenant-b` is missing, wait up to 1 minute and run the command again):
++
+----
+NAMESPACE   NAME              STORETYPE            STORE          REFRESH INTERVAL   STATUS         READY
+tenant-a    api-credentials   ClusterSecretStore   vault-shared   1m                 SecretSynced   True
+tenant-b    api-credentials   ClusterSecretStore   vault-shared   1m                 SecretSynced   True
+----
++
+You didn't create anything in `tenant-b` except the label. The operator created the `ExternalSecret`, and the `ExternalSecret` created the Secret.
+
+. Remove the label from `tenant-a`:
++
+[source,bash,role=execute]
+----
+oc label namespace tenant-a shared-secrets-
+----
++
+Expected output:
++
+----
+namespace/tenant-a unlabeled
+----
+
+. List the `ExternalSecret` resources again, and check the Secret in `tenant-a`:
++
+[source,bash,role=execute]
+----
+oc get externalsecret -A --field-selector metadata.name=api-credentials
+oc get secret api-credentials -n tenant-a
+----
++
+Expected output (if `tenant-a` is still listed, wait up to 1 minute and run the commands again):
++
+----
+NAMESPACE   NAME              STORETYPE            STORE          REFRESH INTERVAL   STATUS         READY
+tenant-b    api-credentials   ClusterSecretStore   vault-shared   1m                 SecretSynced   True
+Error from server (NotFound): secrets "api-credentials" not found
+----
++
+The operator removed the `ExternalSecret` from `tenant-a`, and with it the Secret. Removing a label is enough to revoke a namespace's access.
+
+=== Rotate the shared secret
+
+. Rotate the API key in Vault:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault kv put secret/shared/api-credentials api_key=ak-shared-0002
+----
+
+. Wait for the next refresh, which happens within 1 minute:
++
+[source,bash,role=execute]
+----
+until [ "$(oc get secret api-credentials -n tenant-b -o jsonpath='{.data.api_key}' | base64 -d)" = "ak-shared-0002" ]; do sleep 5; done
+oc get secret api-credentials -n tenant-b -o jsonpath='{.data.api_key}' | base64 -d; echo
+----
++
+Expected output:
++
+----
+ak-shared-0002
+----
++
+One change in Vault reaches every namespace that subscribes to the Secret.
+
+=== Verify the ClusterExternalSecret
+
+The `ClusterExternalSecret` works when:
+
+* Labeling a namespace with `shared-secrets=enabled` creates the `api-credentials` `ExternalSecret` and Secret in it
+* Removing the label deletes both from the namespace
+* A rotation in Vault reaches the Secret in every labeled namespace
+
+[#exercise-3-template-the-secret]
+== Exercise 3: Build new values with a template
+
+Applications don't always want a credential in the shape in which it is stored. One application expects a single connection string, another reads a configuration file, and a third needs a Secret of a specific type, such as `kubernetes.io/dockerconfigjson`. The `target.template` field of an `ExternalSecret` builds the keys of the Secret from the fetched values with Go templates.
+
+In this exercise, you extend the `database-credentials` Secret of the sample application with a database URL and a properties file. No database runs in this workshop, so the host name in the templates is only an example.
+
+=== Add a template to the ExternalSecret
+
+. Replace the `database-credentials` `ExternalSecret` with a version that contains a template:
++
+[source,bash,role=execute]
+----
+oc apply -f - <<'EOF'
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: database-credentials
+  namespace: secrets-demo
+spec:
+  refreshInterval: 15s
+  secretStoreRef:
+    name: vault-backend
+    kind: SecretStore
+  target:
+    name: database-credentials
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      mergePolicy: Merge
+      data:
+        database-url: "postgresql://{{ .username }}:{{ .password }}@postgresql.secrets-demo.svc:5432/appdb"
+        application.properties: |
+          db.host=postgresql.secrets-demo.svc
+          db.port=5432
+          db.user={{ .username }}
+          db.password={{ .password }}
+  data:
+  - secretKey: username
+    remoteRef:
+      key: secrets-demo/database
+      property: username
+  - secretKey: password
+    remoteRef:
+      key: secrets-demo/database
+      property: password
+EOF
+----
++
+The `data` section is unchanged from Module 2. The `refreshInterval` is back at `15s` after you set it to `1h` in Module 3. The new `template` section does the following:
++
+* Each key under `template.data` becomes a key of the Secret. Its value is a Go template.
+* `{{ .username }}` and `{{ .password }}` refer to the `secretKey` names from the `data` section.
+* `engineVersion: v2` selects the current template engine.
+* `mergePolicy: Merge` adds the templated keys to the fetched `username` and `password` keys. With the default, `Replace`, the Secret would contain only the templated keys, and the `DB_USERNAME` and `DB_PASSWORD` environment variables of the sample application would no longer find their keys.
++
+Expected output:
++
+----
+externalsecret.external-secrets.io/database-credentials configured
+----
+
+=== Verify the rendered Secret
+
+. Check that the Secret now has four keys:
++
+[source,bash,role=execute]
+----
+oc get secret database-credentials -n secrets-demo
+----
++
+Expected output:
++
+----
+NAME                   TYPE     DATA   AGE
+database-credentials   Opaque   4      45m
+----
+
+. Read the rendered database URL:
++
+[source,bash,role=execute]
+----
+oc get secret database-credentials -n secrets-demo -o jsonpath='{.data.database-url}' | base64 -d; echo
+----
++
+Expected output:
++
+----
+postgresql://app_user:S3cr3t-v3@postgresql.secrets-demo.svc:5432/appdb
+----
+
+. List the files in the Secret volume of the running sample application:
++
+[source,bash,role=execute]
+----
+oc exec deployment/secrets-demo-app -n secrets-demo -- ls /etc/secrets/database
+----
++
+Expected output (if you see only `password` and `username`, wait a minute and run the command again):
++
+----
+application.properties
+database-url
+password
+username
+----
++
+The kubelet added the new keys as files to the running pod. You didn't restart anything.
+
+. Show the rendered configuration file:
++
+[source,bash,role=execute]
+----
+oc exec deployment/secrets-demo-app -n secrets-demo -- cat /etc/secrets/database/application.properties
+----
++
+Expected output:
++
+----
+db.host=postgresql.secrets-demo.svc
+db.port=5432
+db.user=app_user
+db.password=S3cr3t-v3
+----
+
+=== Rotate the password
+
+. Rotate the password in Vault:
++
+[source,bash,role=execute]
+----
+oc exec -n vault vault-0 -- vault kv put secret/secrets-demo/database username=app_user password=S3cr3t-v4
+----
+
+. Watch the database URL in the pod until it shows the new password:
++
+[source,bash,role=execute]
+----
+while true; do date +%T; oc exec deployment/secrets-demo-app -n secrets-demo -- cat /etc/secrets/database/database-url; echo; sleep 10; done
+----
++
+After about 1 to 2 minutes, the output looks like this. Press `Ctrl+C` to stop the loop.
++
+----
+14:31:07
+postgresql://app_user:S3cr3t-v4@postgresql.secrets-demo.svc:5432/appdb
+----
++
+The operator renders the templates again on every sync, so the connection string and the configuration file always contain the current password.
+
+[TIP]
+====
+* To keep a long template out of the `ExternalSecret`, store it in a config map and reference it with `target.template.templateFrom`.
+* To create a typed Secret, such as `kubernetes.io/dockerconfigjson` for an image pull secret or `kubernetes.io/tls` for a certificate, set `target.template.type`.
+* If a password can contain characters such as `@` or `/`, encode it in URLs with `{{ .password | urlquery }}`.
+====
+
+=== Verify the template
+
+The template works when:
+
+* The `database-credentials` Secret contains `username`, `password`, `database-url`, and `application.properties`
+* The `database-url` and `application.properties` files appear in the running pod
+* A rotation in Vault updates the rendered values
+
+== Learning outcomes
+
+By completing this module, you now understand:
+
+* How a `ClusterSecretStore` lets a platform team configure the connection to Vault once for the whole cluster, and how `conditions` limit it to selected namespaces
+* How a `ClusterExternalSecret` creates an `ExternalSecret` in every matching namespace and removes it when a namespace stops matching
+* How `target.template` builds connection strings and configuration files from fetched values, and how `mergePolicy` decides whether the fetched keys are kept
+* That rotations in Vault reach shared and templated Secrets in the same way as plain ones
+
+== Module summary
+
+You turned the single-namespace setup into one that scales across the cluster, and delivered credentials in the formats that applications expect.
+
+**What you accomplished:**
+
+* Created the `vault-shared` `ClusterSecretStore` and restricted it to namespaces labeled `shared-secrets=enabled`
+* Distributed the `api-credentials` Secret to labeled namespaces with a `ClusterExternalSecret`, and revoked it by removing a label
+* Added a database URL and a properties file to the `database-credentials` Secret with a template
+* Rotated secrets in Vault and saw the shared and templated values follow
+
+**Next steps:**
+
+Continue to the xref:07-conclusion.adoc[Conclusion] for a summary of the workshop and resources for further learning.

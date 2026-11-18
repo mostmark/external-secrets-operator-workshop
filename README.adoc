@@ -4,7 +4,7 @@ A hands-on workshop that teaches how to sync secrets from HashiCorp Vault into R
 
 HashiCorp Vault serves as the example secrets store. The same approach applies to the other providers that the External Secrets Operator supports, such as AWS Secrets Manager, Azure Key Vault, and Google Secret Manager.
 
-The workshop takes 1 to 1.5 hours and is aimed at beginner platform engineers, developers, and architects.
+The workshop takes about 2 hours and is aimed at beginner platform engineers, developers, and architects.
 
 The content is built with Antora and published as a static site using the Red Hat Demo Platform (Showroom) UI theme.
 
@@ -30,6 +30,9 @@ Preview the lab guide https://mostmark.github.io/external-secrets-operator-works
 
 |Module 3
 |Deploy a sample application that reads the Secret as environment variables and as a mounted volume, rotate the password in Vault, and force an immediate sync
+
+|Module 4
+|Share the Vault connection across namespaces with a `ClusterSecretStore`, distribute a Secret to labeled namespaces with a `ClusterExternalSecret`, and build a connection string and a configuration file with a template
 
 |Conclusion
 |Key takeaways, next steps, and references
@@ -109,7 +112,7 @@ The site is generated in the `www/` directory.
 
 == Cluster preparation
 
-The workshop is admin-only and uses fixed, cluster-wide names (`vault`, `external-secrets-operator`, `external-secrets`, `secrets-demo`). Each participant needs their own cluster and a user with cluster-admin privileges. Participants install Vault and the External Secrets Operator themselves during the workshop.
+The workshop is admin-only and uses fixed, cluster-wide names (`vault`, `external-secrets-operator`, `external-secrets`, `secrets-demo`, `secrets-platform`, `tenant-a`, `tenant-b`). Each participant needs their own cluster and a user with cluster-admin privileges. Participants install Vault and the External Secrets Operator themselves during the workshop.
 
 === Prepare the cluster
 
@@ -144,9 +147,10 @@ The workshop downloads content from `helm.releases.hashicorp.com`, `docker.io`, 
 
 === Clean up the cluster
 
-The `cleanup-cluster.sh` script removes everything the workshop installs, whether or not the participant ran the optional cleanup in Module 3:
+The `cleanup-cluster.sh` script removes everything the workshop installs:
 
-* Deletes the `secrets-demo` project
+* Deletes the `ClusterExternalSecret` and `ClusterSecretStore` from Module 4
+* Deletes the `secrets-demo`, `secrets-platform`, `tenant-a`, and `tenant-b` projects
 * Uninstalls the External Secrets Operator for Red Hat OpenShift, including its components, projects, and CRDs
 * Uninstalls HashiCorp Vault (Helm release, cluster role binding, and the `vault` project)
 * Deletes the `lab-guide` project

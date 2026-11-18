@@ -123,6 +123,9 @@ Expected output: A Helm client version string, such as `v3.x.y+g...`. The Vault 
 
 |Module 3: Use synced secrets in a sample application
 |25 minutes
+
+|Module 4: Share and shape secrets across the cluster
+|30 minutes
 |===
 
 == Namespaces used in this workshop
@@ -142,4 +145,10 @@ Expected output: A Helm client version string, such as `v3.x.y+g...`. The Vault 
 
 |`secrets-demo`
 |Your `SecretStore`, `ExternalSecret`, synced Secret, and sample application
+
+|`secrets-platform`
+|The service account that the `ClusterSecretStore` authenticates as (Module 4)
+
+|`tenant-a`, `tenant-b`
+|Application namespaces that receive a shared Secret (Module 4)
 |===

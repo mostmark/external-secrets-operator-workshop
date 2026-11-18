@@ -18,4 +18,9 @@
 ** xref:05-module-03-sample-app.adoc#exercise-1-deploy-the-sample-application[Exercise 1: Deploy the Sample Application]
 ** xref:05-module-03-sample-app.adoc#exercise-2-rotate-the-secret[Exercise 2: Rotate the Secret]
 
-* xref:06-conclusion.adoc[Conclusion and Next Steps]
+* xref:06-module-04-share-and-template.adoc[Module 4: Share and Shape Secrets Across the Cluster]
+** xref:06-module-04-share-and-template.adoc#exercise-1-create-a-clustersecretstore[Exercise 1: Create a ClusterSecretStore]
+** xref:06-module-04-share-and-template.adoc#exercise-2-distribute-with-a-clusterexternalsecret[Exercise 2: Distribute with a ClusterExternalSecret]
+** xref:06-module-04-share-and-template.adoc#exercise-3-template-the-secret[Exercise 3: Build New Values with a Template]
+
+* xref:07-conclusion.adoc[Conclusion and Next Steps]
